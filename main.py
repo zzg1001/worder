@@ -92,7 +92,7 @@ def main_health():
 
 # ========== OAuth服务（8092） ==========
 oauth_app = Flask('oauth_app')
-oauth_processor = OAuthProcessor(wechat_api, auth_manager, user_manager)
+oauth_processor = OAuthProcessor(wechat_api, auth_manager, user_manager, ai_client)
 
 
 @oauth_app.route("/oauth_callback", methods=["GET"])

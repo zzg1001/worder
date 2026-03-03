@@ -50,8 +50,8 @@ class MessageProcessor:
             is_authorized, user_info = self.user_manager.check_user_authorized(userid)
 
             if not is_authorized:
-                # 首次使用，发送授权卡片
-                self._send_auth_card(userid)
+                # 首次使用，保存消息并发送授权卡片
+                self._send_auth_card(userid, content)
                 return
 
             # 2. 获取用户上下文
@@ -88,11 +88,14 @@ class MessageProcessor:
             logger.error(f"处理消息异常: {e}")
             self.wechat_api.send_app_message(userid, "系统繁忙，请稍后重试")
 
-    def _send_auth_card(self, userid):
-        """发送授权卡片"""
+    def _send_auth_card(self, userid, original_message=None):
+        """发送授权卡片，并保存用户原始消息"""
         auth_url = self.auth_manager.generate_auth_url(userid)
 
         if auth_url:
+            # 保存用户原始消息，授权成功后自动处理
+            if original_message:
+                self.auth_manager.save_pending_message(userid, original_message)
             # 使用简洁的markdown链接格式
             message = self.auth_manager.render_auth_card_message(auth_url)
         else:

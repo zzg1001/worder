@@ -22,6 +22,7 @@ class AuthManager:
         self.agent_id = agent_id
         self.corp_id = corp_id
         self._auth_states = {}
+        self._pending_messages = {}  # 保存待处理的消息 {userid: message}
 
     def generate_auth_url(self, userid):
         """生成OAuth授权链接"""
@@ -87,6 +88,26 @@ class AuthManager:
         except Exception as e:
             logger.error(f"验证state失败: {e}")
             return None
+
+    def save_pending_message(self, userid, message):
+        """保存用户待处理的消息"""
+        self._pending_messages[userid] = {
+            'message': message,
+            'time': time.time()
+        }
+        logger.info(f"保存待处理消息: userid={userid}, message={message}")
+
+    def get_pending_message(self, userid):
+        """获取并清除用户待处理的消息"""
+        if userid in self._pending_messages:
+            pending = self._pending_messages[userid]
+            # 检查消息是否过期（10分钟）
+            if time.time() - pending['time'] < 600:
+                del self._pending_messages[userid]
+                return pending['message']
+            else:
+                del self._pending_messages[userid]
+        return None
 
     def render_auth_card_message(self, auth_url):
         """
