@@ -10,5 +10,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Test
-        run: echo "Deploy triggered"
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 8.153.198.194
+          username: root
+          port: 63022
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /root/ai_work_order
+            git pull origin main
