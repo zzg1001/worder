@@ -19,53 +19,63 @@ class OAuthProcessor:
         self.ai_client = ai_client
 
     def handle(self, code, state):
-        """处理OAuth回调"""
-        # 1. 验证state
-        userid = self.auth_manager.verify_state(state)
-        if not userid:
-            return self.auth_manager.render_error_page("授权链接已过期，请重新获取")
+        """处理OAuth回调 - 快速返回页面，异步处理消息"""
+        try:
+            # 1. 验证state
+            userid = self.auth_manager.verify_state(state)
+            if not userid:
+                return self.auth_manager.render_error_page("授权链接已过期，请重新获取")
 
-        # 2. 通过code获取user_ticket
-        user_ticket_info = self.wechat_api.get_user_info_by_code(code)
-        if not user_ticket_info or not user_ticket_info.get("user_ticket"):
-            return self.auth_manager.render_error_page("获取授权信息失败")
+            # 2. 通过code获取user_ticket
+            user_ticket_info = self.wechat_api.get_user_info_by_code(code)
+            if not user_ticket_info or not user_ticket_info.get("user_ticket"):
+                return self.auth_manager.render_error_page("获取授权信息失败")
 
-        # 3. 获取用户详情（主要是手机号）
-        detail = self.wechat_api.get_user_detail(user_ticket_info["user_ticket"])
-        if not detail:
-            return self.auth_manager.render_error_page("获取用户信息失败")
+            # 3. 获取用户详情（主要是手机号）
+            detail = self.wechat_api.get_user_detail(user_ticket_info["user_ticket"])
+            if not detail:
+                return self.auth_manager.render_error_page("获取用户信息失败")
 
-        # 4. 必须有手机号
-        mobile = detail.get("mobile")
-        if not mobile:
-            return self.auth_manager.render_error_page("您的账号未绑定手机号")
+            # 4. 必须有手机号
+            mobile = detail.get("mobile")
+            if not mobile:
+                return self.auth_manager.render_error_page("您的账号未绑定手机号")
 
-        # 5. 获取完整用户信息（姓名、部门等从API获取）并保存
-        user_data = self.user_manager.get_and_save_user_info(userid, mobile)
+            # 5. 先获取待处理消息（从内存读取，很快）
+            pending_message = self.auth_manager.get_pending_message(userid)
 
-        if not user_data:
-            return self.auth_manager.render_error_page("保存用户信息失败")
-
-        # 6. 检查是否有待处理的消息，异步处理不阻塞页面
-        pending_message = self.auth_manager.get_pending_message(userid)
-
-        if pending_message and self.ai_client:
-            # 有待处理消息，启动异步线程处理
+            # 6. 异步处理：保存用户信息 + 调用AI + 发送消息
             threading.Thread(
-                target=self._process_pending_message,
-                args=(userid, pending_message),
-                daemon=True
-            ).start()
-        else:
-            # 没有待处理消息，异步发送普通通知
-            threading.Thread(
-                target=self._send_success_notification,
-                args=(userid, user_data['name']),
+                target=self._async_process,
+                args=(userid, mobile, pending_message),
                 daemon=True
             ).start()
 
-        # 7. 立即返回成功页面（不等待AI处理）
-        return self.auth_manager.render_success_page(user_data.get('name', ''))
+            # 7. 立即返回成功页面（不等待任何处理）
+            return self.auth_manager.render_success_page()
+
+        except Exception as e:
+            logger.error(f"OAuth处理异常: {e}")
+            return self.auth_manager.render_error_page("系统错误，请重试")
+
+    def _async_process(self, userid, mobile, pending_message):
+        """异步处理：保存用户信息 + 调用AI"""
+        try:
+            # 1. 保存用户信息
+            user_data = self.user_manager.get_and_save_user_info(userid, mobile)
+            if not user_data:
+                logger.error(f"保存用户信息失败: {userid}")
+                self.wechat_api.send_app_message(userid, "授权成功，但保存信息失败，请重试")
+                return
+
+            # 2. 处理待处理消息或发送成功通知
+            if pending_message and self.ai_client:
+                self._process_pending_message(userid, pending_message)
+            else:
+                self._send_success_notification(userid, user_data['name'])
+
+        except Exception as e:
+            logger.error(f"异步处理失败: {e}")
 
     def _process_pending_message(self, userid, message):
         """异步处理待处理的消息"""

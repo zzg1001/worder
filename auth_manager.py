@@ -186,12 +186,13 @@ class AuthManager:
         </html>
         """
 
-    def render_success_page(self, name=""):
+    def render_success_page(self, name=None):
         """
         渲染授权成功页面
         不自动跳转，不调用任何微信接口，让用户手动关闭
         """
         display_name = f"{name}，" if name else ""
+        display_msg = f"{display_name}验证已通过" if name else "验证已通过"
         return f"""
         <!DOCTYPE html>
         <html lang="zh-CN">
@@ -257,7 +258,7 @@ class AuthManager:
             <div class="container">
                 <div class="success-icon">✓</div>
                 <h1>授权成功</h1>
-                <p class="desc">{display_name}验证已通过<br>现在可以返回企业微信使用AI助手</p>
+                <p class="desc">{display_msg}<br>现在可以返回企业微信使用AI助手</p>
                 <div class="close-tip">
                     👆 点击右上角关闭按钮<br>或点击下方按钮返回
                 </div>
