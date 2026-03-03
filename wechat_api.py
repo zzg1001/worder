@@ -146,6 +146,120 @@ class WeChatAPI:
             logger.error(f"撤回消息异常: {e}")
             return False
 
+    def send_template_card(self, touser, card_type, main_title, sub_title="", response_code=None):
+        """发送模板卡片消息（文本通知型）
+
+        Args:
+            touser: 接收用户ID
+            card_type: 卡片类型，如 "text_notice"
+            main_title: 主标题
+            sub_title: 副标题（灰色小字）
+            response_code: 用于更新卡片的唯一标识
+
+        Returns:
+            dict: {"response_code": ..., "msgid": ...} 或 None
+        """
+        access_token = self.get_access_token()
+        if not access_token:
+            return None
+
+        import uuid
+        if not response_code:
+            response_code = str(uuid.uuid4())
+
+        url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
+
+        card = {
+            "card_type": card_type,
+            "source": {
+                "desc": "AI助手"
+            },
+            "main_title": {
+                "title": main_title
+            },
+            "card_action": {
+                "type": 1,
+                "url": ""
+            },
+            "task_id": response_code
+        }
+
+        if sub_title:
+            card["sub_title_text"] = sub_title
+
+        data = {
+            "touser": touser,
+            "msgtype": "template_card",
+            "agentid": self.agent_id,
+            "template_card": card
+        }
+
+        try:
+            resp = requests.post(url, json=data, timeout=10)
+            result = resp.json()
+            logger.info(f"发送模板卡片结果: {result}")
+            if result.get("errcode") == 0:
+                return {
+                    "response_code": response_code,
+                    "msgid": result.get("msgid")
+                }
+            return None
+        except Exception as e:
+            logger.error(f"发送模板卡片异常: {e}")
+            return None
+
+    def update_template_card(self, touser, response_code, main_title, sub_title=""):
+        """更新模板卡片消息
+
+        Args:
+            touser: 接收用户ID
+            response_code: 发送时返回的response_code
+            main_title: 新的主标题
+            sub_title: 新的副标题（灰色小字）
+        """
+        access_token = self.get_access_token()
+        if not access_token:
+            return False
+
+        url = f"https://qyapi.weixin.qq.com/cgi-bin/message/update_template_card?access_token={access_token}"
+
+        card = {
+            "card_type": "text_notice",
+            "source": {
+                "desc": "AI助手"
+            },
+            "main_title": {
+                "title": main_title
+            },
+            "card_action": {
+                "type": 1,
+                "url": ""
+            }
+        }
+
+        if sub_title:
+            card["sub_title_text"] = sub_title
+
+        data = {
+            "userids": [touser],
+            "agentid": self.agent_id,
+            "response_code": response_code,
+            "template_card": card
+        }
+
+        try:
+            resp = requests.post(url, json=data, timeout=10)
+            result = resp.json()
+            if result.get("errcode") == 0:
+                logger.info(f"更新模板卡片成功: response_code={response_code}")
+                return True
+            else:
+                logger.warning(f"更新模板卡片失败: {result}")
+                return False
+        except Exception as e:
+            logger.error(f"更新模板卡片异常: {e}")
+            return False
+
     def get_user_info_by_code(self, code):
         """通过code获取用户信息（OAuth授权流程）"""
         access_token = self.get_access_token()

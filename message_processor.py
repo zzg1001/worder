@@ -45,7 +45,7 @@ class MessageProcessor:
 
     def _handle_message(self, userid, content):
         """处理单条消息"""
-        waiting_msgid = None
+        waiting_card = None
         try:
             # 1. 检查用户是否已授权（数据库中有手机号）
             is_authorized, user_info = self.user_manager.check_user_authorized(userid)
@@ -65,8 +65,12 @@ class MessageProcessor:
             # 4. 构建带用户信息的消息给AI
             message_with_context = self.user_manager.format_user_info_for_ai(user_context, content)
 
-            # 5. 发送等待提示（保存msgid用于后续撤回）
-            waiting_msgid = self.wechat_api.send_app_message(userid, "正在处理中，请稍候...")
+            # 5. 发送等待提示卡片（用于后续更新状态）
+            waiting_card = self.wechat_api.send_template_card(
+                userid,
+                "text_notice",
+                "正在处理中，请稍候..."
+            )
 
             # 6. 打印发送给AI的消息
             print("\n" + "*" * 60)
@@ -85,18 +89,28 @@ class MessageProcessor:
             print(ai_reply)
             print("#" * 60 + "\n")
 
-            # 9. 撤回等待提示消息
-            if waiting_msgid:
-                self.wechat_api.recall_message(waiting_msgid)
+            # 9. 更新等待卡片为已处理状态（灰色小字）
+            if waiting_card:
+                self.wechat_api.update_template_card(
+                    userid,
+                    waiting_card["response_code"],
+                    "",  # 主标题置空
+                    "已处理"  # 副标题显示为灰色小字
+                )
 
             # 10. 发送回复
             self.wechat_api.send_app_message(userid, ai_reply)
 
         except Exception as e:
             logger.error(f"处理消息异常: {e}")
-            # 撤回等待提示消息
-            if waiting_msgid:
-                self.wechat_api.recall_message(waiting_msgid)
+            # 更新等待卡片为错误状态
+            if waiting_card:
+                self.wechat_api.update_template_card(
+                    userid,
+                    waiting_card["response_code"],
+                    "",
+                    "处理失败"
+                )
             self.wechat_api.send_app_message(userid, "系统繁忙，请稍后重试")
 
     def _send_auth_card(self, userid, original_message=None):

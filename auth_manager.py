@@ -111,14 +111,12 @@ class AuthManager:
 
     def render_auth_card_message(self, auth_url):
         """
-        渲染授权消息 - 专业简洁风格
+        渲染授权消息 - 紧凑醒目风格
         企微中显示为可点击链接
         """
         return (
-            f"【身份验证】\n\n"
-            f"为保障信息安全，首次使用需验证身份。\n\n"
-            f"<a href='{auth_url}'>点击完成验证 ></a>\n\n"
-            f"有效期10分钟，如失效请重新发送消息获取。"
+            f"⚠️ 首次使用需验证身份\n"
+            f"👉 <a href='{auth_url}'>立即验证</a>（10分钟内有效）"
         )
 
     def render_auth_page(self, auth_url):
