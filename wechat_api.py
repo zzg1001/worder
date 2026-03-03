@@ -93,7 +93,7 @@ class WeChatAPI:
         """发送应用消息"""
         access_token = self.get_access_token()
         if not access_token:
-            return False
+            return None
 
         url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
 
@@ -117,9 +117,33 @@ class WeChatAPI:
             resp = requests.post(url, json=data, timeout=10)
             result = resp.json()
             logger.info(f"发送消息结果: {result}")
-            return result.get("errcode") == 0
+            if result.get("errcode") == 0:
+                return result.get("msgid")  # 返回消息ID，用于后续撤回
+            return None
         except Exception as e:
             logger.error(f"发送消息异常: {e}")
+            return None
+
+    def recall_message(self, msgid):
+        """撤回应用消息"""
+        access_token = self.get_access_token()
+        if not access_token:
+            return False
+
+        url = f"https://qyapi.weixin.qq.com/cgi-bin/message/recall?access_token={access_token}"
+        data = {"msgid": msgid}
+
+        try:
+            resp = requests.post(url, json=data, timeout=10)
+            result = resp.json()
+            if result.get("errcode") == 0:
+                logger.info(f"撤回消息成功: msgid={msgid}")
+                return True
+            else:
+                logger.warning(f"撤回消息失败: {result}")
+                return False
+        except Exception as e:
+            logger.error(f"撤回消息异常: {e}")
             return False
 
     def get_user_info_by_code(self, code):

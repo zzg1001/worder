@@ -79,6 +79,7 @@ class OAuthProcessor:
 
     def _process_pending_message(self, userid, message):
         """异步处理待处理的消息"""
+        waiting_msgid = None
         try:
             # 获取用户上下文
             user_context = self.user_manager.get_user_context(userid)
@@ -86,8 +87,8 @@ class OAuthProcessor:
             # 构建带用户信息的消息
             message_with_context = self.user_manager.format_user_info_for_ai(user_context, message)
 
-            # 发送等待提示
-            self.wechat_api.send_app_message(userid, "正在处理中，请稍候...")
+            # 发送等待提示（保存msgid用于后续撤回）
+            waiting_msgid = self.wechat_api.send_app_message(userid, "正在处理中，请稍候...")
 
             # 打印发送给AI的消息
             print("\n" + "*" * 60)
@@ -106,12 +107,19 @@ class OAuthProcessor:
             print(ai_reply)
             print("#" * 60 + "\n")
 
+            # 撤回等待提示消息
+            if waiting_msgid:
+                self.wechat_api.recall_message(waiting_msgid)
+
             # 发送AI回复给用户
             self.wechat_api.send_app_message(userid, ai_reply)
             logger.info(f"授权后自动处理消息成功: userid={userid}")
 
         except Exception as e:
             logger.error(f"授权后处理消息失败: {e}")
+            # 撤回等待提示消息
+            if waiting_msgid:
+                self.wechat_api.recall_message(waiting_msgid)
             self.wechat_api.send_app_message(userid, "系统繁忙，请稍后重试")
 
     def _send_success_notification(self, userid, name):
