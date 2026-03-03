@@ -86,6 +86,9 @@ class OAuthProcessor:
             # 构建带用户信息的消息
             message_with_context = self.user_manager.format_user_info_for_ai(user_context, message)
 
+            # 发送等待提示
+            self.wechat_api.send_app_message(userid, "正在处理中，请稍候...")
+
             # 打印发送给AI的消息
             print("\n" + "*" * 60)
             print("*" + " " * 14 + ">>> 授权后发送给AI的消息 <<<" + " " * 14 + "*")

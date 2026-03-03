@@ -64,24 +64,27 @@ class MessageProcessor:
             # 4. 构建带用户信息的消息给AI
             message_with_context = self.user_manager.format_user_info_for_ai(user_context, content)
 
-            # 5. 打印发送给AI的消息
+            # 5. 发送等待提示
+            self.wechat_api.send_app_message(userid, "正在处理中，请稍候...")
+
+            # 6. 打印发送给AI的消息
             print("\n" + "*" * 60)
             print("*" + " " * 18 + ">>> 发送给AI的消息 <<<" + " " * 17 + "*")
             print("*" * 60)
             print(message_with_context)
             print("*" * 60 + "\n")
 
-            # 6. 调用AI
+            # 7. 调用AI
             ai_reply = self.ai_client.chat(userid, message_with_context)
 
-            # 7. 打印AI返回的回复
+            # 8. 打印AI返回的回复
             print("\n" + "#" * 60)
             print("#" + " " * 18 + "<<< AI返回的回复 >>>" + " " * 19 + "#")
             print("#" * 60)
             print(ai_reply)
             print("#" * 60 + "\n")
 
-            # 8. 发送回复
+            # 9. 发送回复
             self.wechat_api.send_app_message(userid, ai_reply)
 
         except Exception as e:
