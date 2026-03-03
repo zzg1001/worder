@@ -3,19 +3,12 @@ name: Auto Deploy
 on:
   push:
     branches:
-      - main   # 如果你用的是 master 就改成 master
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 8.153.198.194
-          username: root
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            cd /root/ai_work_order
-            git pull origin main
+      - name: Test
+        run: echo "Deploy triggered"
