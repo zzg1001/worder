@@ -45,7 +45,7 @@ class WeChatAPI:
             return None
 
     def get_user_info(self, userid):
-        """获取用户基本信息"""
+        """获取用户基本信息（包含部门）"""
         access_token = self.get_access_token()
         if not access_token:
             return None
@@ -56,23 +56,38 @@ class WeChatAPI:
             if resp.get("errcode") == 0:
                 return {
                     "errcode": 0,
-                    "name": resp.get("name", "未知"),
-                    "mobile": resp.get("mobile", ""),
                     "userid": userid,
+                    "name": resp.get("name", "未知"),
+                    "mobile": resp.get("mobile", ""),  # 这里可能为空，需要通过OAuth获取
                     "department": resp.get("department", []),
                     "position": resp.get("position", ""),
                     "email": resp.get("email", ""),
-                    "avatar": resp.get("avatar", "")
+                    "avatar": resp.get("avatar", ""),
+                    "gender": resp.get("gender", 0),
+                    "status": resp.get("status", 1)
                 }
             else:
-                return {
-                    "errcode": resp.get("errcode"),
-                    "errmsg": resp.get("errmsg"),
-                    "userid": userid
-                }
+                logger.error(f"获取用户信息失败: {resp}")
+                return None
         except Exception as e:
             logger.error(f"获取用户信息异常: {e}")
             return None
+
+    def get_department_list(self):
+        """获取部门列表"""
+        access_token = self.get_access_token()
+        if not access_token:
+            return {}
+
+        url = f"https://qyapi.weixin.qq.com/cgi-bin/department/list?access_token={access_token}"
+        try:
+            resp = requests.get(url, timeout=10).json()
+            if resp.get("errcode") == 0:
+                return {d['id']: d['name'] for d in resp.get('department', [])}
+            return {}
+        except Exception as e:
+            logger.error(f"获取部门列表异常: {e}")
+            return {}
 
     def send_app_message(self, touser, content, msg_type="text"):
         """发送应用消息"""
@@ -150,7 +165,8 @@ class WeChatAPI:
                     "mobile": resp.get("mobile", ""),
                     "email": resp.get("email", ""),
                     "avatar": resp.get("avatar", ""),
-                    "qr_code": resp.get("qr_code", "")
+                    "position": resp.get("position", ""),
+                    "gender": resp.get("gender", 0)
                 }
             else:
                 logger.error(f"获取userdetail失败: {resp}")

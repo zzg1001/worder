@@ -3,6 +3,11 @@
 main.py - 主服务入口（双端口）
 """
 
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import logging
 import threading
 from flask import Flask, request, make_response
@@ -29,7 +34,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ========== 初始化共享组件 ==========
+# 初始化共享组件
 db_manager = DatabaseManager(DB_CONFIG)
 wechat_api = WeChatAPI(CORP_ID, CORP_SECRET, AGENT_ID)
 user_manager = UserManager(wechat_api, db_manager)
@@ -49,7 +54,7 @@ def main_callback():
     ts = request.args.get("timestamp", "")
     nonce = request.args.get("nonce", "")
 
-    logger.info(f"[主服务] 请求: method={request.method}, sig={sig[:10]}...")
+    logger.info(f"[主服务] 请求: method={request.method}")
 
     if request.method == "GET":
         echo_str = request.args.get("echostr", "")
@@ -70,7 +75,7 @@ def main_callback():
             return make_response("success")
 
         plain_xml = wxcpt.decrypt_msg(sig, ts, nonce, raw_data)
-        logger.info(f"[主服务] 解密成功: {plain_xml[:200]}...")
+        logger.info(f"[主服务] 解密成功")
 
         message_processor.process(plain_xml)
         return make_response("success")
@@ -99,7 +104,7 @@ def oauth_callback():
     logger.info(f"[OAuth] 回调: code={code[:10]}****")
 
     if not code:
-        return auth_manager.render_auth_error_page("缺少code参数"), 400
+        return auth_manager.render_error_page("缺少code参数"), 400
 
     return oauth_processor.handle(code, state)
 
@@ -121,12 +126,11 @@ def run_oauth():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("🚀 企业微信AI助手（MySQL版）")
+    print("🚀 企业微信AI助手（优化版）")
     print("=" * 60)
     print(f"📍 消息服务: http://0.0.0.0:{MAIN_PORT}/yjcallback")
     print(f"📍 OAuth服务: http://0.0.0.0:{OAUTH_PORT}/oauth_callback")
     print(f"📍 对外授权: {OAUTH_REDIRECT_URI}")
-    print(f"💾 数据库: {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}")
     print("=" * 60)
 
     t1 = threading.Thread(target=run_main, daemon=True)

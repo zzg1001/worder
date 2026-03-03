@@ -17,15 +17,22 @@ AI_API_URL = "http://47.100.100.139:8028/v1/chat-messages"
 AI_API_KEY = "app-9PcBKF15xLSzND8z25XwVkGe"
 
 # ========== 服务端口配置 ==========
-# 主服务端口（企微消息推送，直接暴露）
 MAIN_PORT = 8091
-# OAuth回调服务端口（Nginx 443转发到此处）
 OAUTH_PORT = 8092
 
 # ========== OAuth授权配置 ==========
-# 注意：这是Nginx 443域名的地址，用于生成授权链接
 OAUTH_REDIRECT_URI = "https://yjservicetest.ike-data.com/oauth_callback"
 OAUTH_SIGN_KEY = os.getenv("WX_SIGN_KEY", "wx_callback_2024")
+
+# ========== MySQL数据库配置 ==========
+DB_CONFIG = {
+    'host': '8.153.198.194',
+    'port': 63306,
+    'user': 'wx_qa',
+    'password': 'cKXF45BLSHW68ynk',
+    'database': 'wx_qa',
+    'charset': 'utf8mb4'
+}
 
 # ========== 日志配置 ==========
 LOG_LEVEL = "INFO"

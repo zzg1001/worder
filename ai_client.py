@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-ai_client.py - AI接口客户端
+ai_client.py - AI接口客户端（原文件提取）
 """
 
 import json
@@ -70,10 +70,3 @@ class AIClient:
         except Exception as e:
             logger.error(f"AI调用异常: {e}")
             return "AI服务暂时不可用，请稍后重试"
-
-    def clear_conversation(self, user_id):
-        """清空用户的对话历史"""
-        if user_id in self._conversation_ids:
-            del self._conversation_ids[user_id]
-            return True
-        return False
