@@ -4,6 +4,7 @@ oauth_processor.py - OAuth回调处理器（修复版）
 """
 
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -45,55 +46,67 @@ class OAuthProcessor:
         if not user_data:
             return self.auth_manager.render_error_page("保存用户信息失败")
 
-        # 6. 检查是否有待处理的消息
+        # 6. 检查是否有待处理的消息，异步处理不阻塞页面
         pending_message = self.auth_manager.get_pending_message(userid)
 
         if pending_message and self.ai_client:
-            # 有待处理消息，自动处理并返回AI回复
-            try:
-                # 获取用户上下文
-                user_context = self.user_manager.get_user_context(userid)
-
-                # 构建带用户信息的消息
-                message_with_context = self.user_manager.format_user_info_for_ai(user_context, pending_message)
-
-                # 打印发送给AI的消息
-                print("\n" + "*" * 60)
-                print("*" + " " * 18 + ">>> 发送给AI的消息 <<<" + " " * 17 + "*")
-                print("*" * 60)
-                print(message_with_context)
-                print("*" * 60 + "\n")
-
-                # 调用AI
-                ai_reply = self.ai_client.chat(userid, message_with_context)
-
-                # 打印AI返回的回复
-                print("\n" + "#" * 60)
-                print("#" + " " * 18 + "<<< AI返回的回复 >>>" + " " * 19 + "#")
-                print("#" * 60)
-                print(ai_reply)
-                print("#" * 60 + "\n")
-
-                # 发送AI回复给用户
-                self.wechat_api.send_app_message(userid, ai_reply)
-                logger.info(f"授权后自动处理消息成功: userid={userid}")
-
-            except Exception as e:
-                logger.error(f"授权后处理消息失败: {e}")
-                self.wechat_api.send_app_message(
-                    userid,
-                    f"✅ 授权成功！{user_data['name']}，现在可以开始使用AI助手了。"
-                )
+            # 有待处理消息，启动异步线程处理
+            threading.Thread(
+                target=self._process_pending_message,
+                args=(userid, pending_message),
+                daemon=True
+            ).start()
         else:
-            # 没有待处理消息，发送普通通知
-            try:
-                self.wechat_api.send_app_message(
-                    userid,
-                    f"✅ 授权成功！{user_data['name']}，现在可以开始使用AI助手了。"
-                )
-            except Exception as e:
-                logger.error(f"发送通知失败: {e}")
+            # 没有待处理消息，异步发送普通通知
+            threading.Thread(
+                target=self._send_success_notification,
+                args=(userid, user_data['name']),
+                daemon=True
+            ).start()
 
-        # 7. 返回成功页面（不跳转，不带自动关闭）
-        # 传入用户名，页面显示"某某，验证已通过"
+        # 7. 立即返回成功页面（不等待AI处理）
         return self.auth_manager.render_success_page(user_data.get('name', ''))
+
+    def _process_pending_message(self, userid, message):
+        """异步处理待处理的消息"""
+        try:
+            # 获取用户上下文
+            user_context = self.user_manager.get_user_context(userid)
+
+            # 构建带用户信息的消息
+            message_with_context = self.user_manager.format_user_info_for_ai(user_context, message)
+
+            # 打印发送给AI的消息
+            print("\n" + "*" * 60)
+            print("*" + " " * 14 + ">>> 授权后发送给AI的消息 <<<" + " " * 14 + "*")
+            print("*" * 60)
+            print(message_with_context)
+            print("*" * 60 + "\n")
+
+            # 调用AI
+            ai_reply = self.ai_client.chat(userid, message_with_context)
+
+            # 打印AI返回的回复
+            print("\n" + "#" * 60)
+            print("#" + " " * 18 + "<<< AI返回的回复 >>>" + " " * 19 + "#")
+            print("#" * 60)
+            print(ai_reply)
+            print("#" * 60 + "\n")
+
+            # 发送AI回复给用户
+            self.wechat_api.send_app_message(userid, ai_reply)
+            logger.info(f"授权后自动处理消息成功: userid={userid}")
+
+        except Exception as e:
+            logger.error(f"授权后处理消息失败: {e}")
+            self.wechat_api.send_app_message(userid, "系统繁忙，请稍后重试")
+
+    def _send_success_notification(self, userid, name):
+        """异步发送授权成功通知"""
+        try:
+            self.wechat_api.send_app_message(
+                userid,
+                f"✅ 授权成功！{name}，现在可以开始使用AI助手了。"
+            )
+        except Exception as e:
+            logger.error(f"发送通知失败: {e}")
