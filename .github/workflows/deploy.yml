@@ -18,6 +18,6 @@ jobs:
           port: 63022
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            cd /root/ai_work_order
+            cd /root/ai_work_order/worder
             git fetch origin main
             git reset --hard origin/main
