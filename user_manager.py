@@ -66,7 +66,7 @@ class UserManager:
         return user_data if success else None
 
     def get_user_context(self, userid):
-        """获取用户上下文信息（用于AI对话）"""
+        """获取用户上下文信息（用于AI对话）- 只获取姓名和手机号"""
         user = self.db.get_user(userid)
 
         if not user:
@@ -75,14 +75,11 @@ class UserManager:
         return {
             'userid': user['userid'],
             'name': user['name'],
-            'mobile': user['mobile'],
-            'department': user['department_names'] or user['department'],
-            'position': user['position'],
-            'email': user['email']
+            'mobile': user['mobile']
         }
 
     def format_user_info_for_display(self, user_context):
-        """格式化用户信息用于显示"""
+        """格式化用户信息用于显示 - 只显示姓名和手机号"""
         if not user_context:
             return "【未获取用户信息】"
 
@@ -92,22 +89,15 @@ class UserManager:
             "=" * 60,
             f"  姓名: {user_context['name']}",
             f"  手机号: {user_context['mobile']}",
-            f"  部门: {user_context['department'] or '未设置'}",
-            f"  职位: {user_context['position'] or '未设置'}",
             "=" * 60
         ]
         return "\n".join(lines)
 
     def format_user_info_for_ai(self, user_context, message):
-        """格式化用户信息给AI"""
+        """格式化用户信息给AI - 只发送姓名和手机号"""
         if not user_context:
             return message
 
         identity = f"[用户身份] 姓名:{user_context['name']} 手机号:{user_context['mobile']}"
-
-        if user_context['department']:
-            identity += f" 部门:{user_context['department']}"
-        if user_context['position']:
-            identity += f" 职位:{user_context['position']}"
 
         return f"{identity}\n[用户消息] {message}"
