@@ -1,29 +1,21 @@
-name: 🚀 Deploy to Server
+name: Auto Deploy
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
+    branches:
+      - main   # 如果你用的是 master 就改成 master
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.0
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.PRIVATE_KEY }}
-          port: 22
-          script_stop: true
+          host: 8.153.198.194
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            echo "🎯 开始部署..."
-            cd ${{ secrets.DEPLOY_PATH }}
-            git fetch origin main
-            git reset --hard origin/main
-            echo "✅ 代码更新完成！"
-            echo "⏰ 时间: $(date)"
+            cd /root/ai_work_order
+            git pull origin main
