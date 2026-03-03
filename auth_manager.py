@@ -184,6 +184,71 @@ class AuthManager:
         </html>
         """
 
+    def render_processing_page(self):
+        """渲染处理中页面 - 立即返回，验证结果通过消息通知"""
+        return """
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>正在验证</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background: #f5f5f5;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                }
+                .container {
+                    background: white;
+                    padding: 50px 30px;
+                    border-radius: 12px;
+                    box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+                    text-align: center;
+                    max-width: 320px;
+                    width: 90%;
+                }
+                .loading {
+                    width: 50px;
+                    height: 50px;
+                    border: 4px solid #f0f0f0;
+                    border-top: 4px solid #07c160;
+                    border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                    margin: 0 auto 25px;
+                }
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+                h1 { font-size: 20px; color: #333; margin-bottom: 12px; font-weight: 500; }
+                .desc { color: #666; font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
+                .tip {
+                    background: #f0f9eb;
+                    color: #67c23a;
+                    padding: 12px;
+                    border-radius: 6px;
+                    font-size: 13px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="loading"></div>
+                <h1>正在验证身份</h1>
+                <p class="desc">请稍候，验证完成后将通过消息通知您</p>
+                <div class="tip">
+                    ✅ 您可以关闭此页面<br>返回企业微信等待结果
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
     def render_success_page(self, name=None):
         """
         渲染授权成功页面

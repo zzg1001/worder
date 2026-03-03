@@ -19,7 +19,7 @@ class OAuthProcessor:
         self.ai_client = ai_client
 
     def handle(self, code, state):
-        """处理OAuth回调 - 快速返回页面，异步处理消息"""
+        """处理OAuth回调 - 同步验证身份，异步处理AI请求"""
         try:
             # 1. 验证state
             userid = self.auth_manager.verify_state(state)
@@ -41,17 +41,17 @@ class OAuthProcessor:
             if not mobile:
                 return self.auth_manager.render_error_page("您的账号未绑定手机号")
 
-            # 5. 先获取待处理消息（从内存读取，很快）
+            # 5. 获取待处理消息
             pending_message = self.auth_manager.get_pending_message(userid)
 
-            # 6. 异步处理：保存用户信息 + 调用AI + 发送消息
+            # 6. 异步处理：保存用户信息 + 调用AI（不阻塞页面返回）
             threading.Thread(
                 target=self._async_process,
                 args=(userid, mobile, pending_message),
                 daemon=True
             ).start()
 
-            # 7. 立即返回成功页面（不等待任何处理）
+            # 7. 立即返回成功页面
             return self.auth_manager.render_success_page()
 
         except Exception as e:
