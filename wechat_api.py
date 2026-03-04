@@ -59,9 +59,11 @@ class WeChatAPI:
         if not force_refresh and self._contacts_token_cache["access_token"] and now < self._contacts_token_cache["expire_time"]:
             return self._contacts_token_cache["access_token"]
 
+        logger.info(f"开始获取通讯录Token, corpid={self.corp_id}")
         url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={self.corp_id}&corpsecret={self.contacts_secret}"
         try:
             resp = requests.get(url, timeout=10).json()
+            logger.info(f"通讯录Token响应: errcode={resp.get('errcode')}, errmsg={resp.get('errmsg')}")
             if resp.get("access_token"):
                 self._contacts_token_cache["access_token"] = resp["access_token"]
                 self._contacts_token_cache["expire_time"] = now + 7100

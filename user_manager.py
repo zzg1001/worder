@@ -30,9 +30,11 @@ class UserManager:
         mobile从OAuth授权获取
         """
         # 1. 获取用户基本信息（含部门ID）
+        logger.info(f"开始获取用户信息: {userid}")
         user_info = self.wechat_api.get_user_info(userid)
+        logger.info(f"获取用户信息结果: {user_info}")
         if not user_info or user_info.get('errcode') != 0:
-            logger.error(f"获取用户信息失败: {userid}")
+            logger.error(f"获取用户信息失败: {userid}, 返回: {user_info}")
             return None
 
         # 2. 获取部门名称
