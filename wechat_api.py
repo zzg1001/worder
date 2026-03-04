@@ -349,3 +349,55 @@ class WeChatAPI:
         except Exception as e:
             logger.error(f"获取userdetail异常: {e}")
             return None
+
+    def download_media(self, media_id):
+        """下载媒体文件（图片、语音、视频、文件）
+
+        Returns:
+            tuple: (文件内容bytes, 文件名) 或 (None, None)
+        """
+        access_token = self.get_access_token()
+        if not access_token:
+            return None, None
+
+        url = f"https://qyapi.weixin.qq.com/cgi-bin/media/get?access_token={access_token}&media_id={media_id}"
+        try:
+            resp = requests.get(url, timeout=30)
+
+            # 检查是否返回错误JSON
+            content_type = resp.headers.get('Content-Type', '')
+            if 'application/json' in content_type or 'text/plain' in content_type:
+                error_info = resp.json()
+                logger.error(f"下载媒体文件失败: {error_info}")
+                return None, None
+
+            # 从Content-Disposition获取文件名
+            content_disposition = resp.headers.get('Content-Disposition', '')
+            filename = None
+            if 'filename=' in content_disposition:
+                # 解析文件名
+                import re
+                match = re.search(r'filename="?([^";\n]+)"?', content_disposition)
+                if match:
+                    filename = match.group(1)
+
+            if not filename:
+                # 根据Content-Type生成默认文件名
+                import uuid
+                ext_map = {
+                    'image/jpeg': '.jpg',
+                    'image/png': '.png',
+                    'image/gif': '.gif',
+                    'audio/amr': '.amr',
+                    'video/mp4': '.mp4',
+                    'application/octet-stream': ''
+                }
+                ext = ext_map.get(content_type.split(';')[0], '')
+                filename = f"{uuid.uuid4().hex}{ext}"
+
+            logger.info(f"下载媒体文件成功: {filename}, 大小: {len(resp.content)} bytes")
+            return resp.content, filename
+
+        except Exception as e:
+            logger.error(f"下载媒体文件异常: {e}")
+            return None, None

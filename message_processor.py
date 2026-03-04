@@ -3,11 +3,16 @@
 message_processor.py - 消息处理器
 """
 
+import os
 import logging
 import threading
 import xml.etree.ElementTree as ET
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+# 文件保存目录
+FILE_SAVE_DIR = "/root/ai_work_order/doc"
 
 
 class MessageProcessor:
@@ -28,14 +33,28 @@ class MessageProcessor:
             from_user = root.findtext("FromUserName", "")
             content = root.findtext("Content", "")
 
-            logger.info(f"收到消息: 用户={from_user}, 内容={content}")
+            logger.info(f"收到消息: 用户={from_user}, 类型={msg_type}, 内容={content}")
 
+            # 处理文本消息
             if msg_type == "text" and content:
                 threading.Thread(
                     target=self._handle_message,
                     args=(from_user, content)
                 ).start()
                 return True
+
+            # 处理非文本消息（图片、语音、视频、文件）
+            if msg_type in ["image", "voice", "video", "file"]:
+                media_id = root.findtext("MediaId", "")
+                # 文件消息还有文件名
+                filename = root.findtext("FileName", "")
+
+                if media_id:
+                    threading.Thread(
+                        target=self._handle_file_message,
+                        args=(from_user, msg_type, media_id, filename)
+                    ).start()
+                    return True
 
             return False
 
@@ -90,6 +109,56 @@ class MessageProcessor:
         except Exception as e:
             logger.error(f"处理消息异常: {e}")
             self.wechat_api.send_app_message(userid, "系统繁忙，请稍后重试")
+
+    def _handle_file_message(self, userid, msg_type, media_id, original_filename=None):
+        """处理文件消息（图片、语音、视频、文件）"""
+        try:
+            # 类型名称映射
+            type_names = {
+                "image": "图片",
+                "voice": "语音",
+                "video": "视频",
+                "file": "文件"
+            }
+            type_name = type_names.get(msg_type, "文件")
+
+            logger.info(f"开始处理{type_name}: userid={userid}, media_id={media_id}")
+
+            # 下载文件
+            file_content, filename = self.wechat_api.download_media(media_id)
+
+            if not file_content:
+                self.wechat_api.send_app_message(userid, f"❌ {type_name}下载失败，请重试")
+                return
+
+            # 使用原始文件名（如果有）
+            if original_filename:
+                filename = original_filename
+
+            # 确保目录存在
+            os.makedirs(FILE_SAVE_DIR, exist_ok=True)
+
+            # 生成唯一文件名（避免重复）
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            name, ext = os.path.splitext(filename) if filename else ("file", "")
+            save_filename = f"{userid}_{timestamp}_{name}{ext}"
+            save_path = os.path.join(FILE_SAVE_DIR, save_filename)
+
+            # 保存文件
+            with open(save_path, "wb") as f:
+                f.write(file_content)
+
+            logger.info(f"{type_name}已保存: {save_path}")
+
+            # 通知用户
+            self.wechat_api.send_app_message(
+                userid,
+                f"✅ {type_name}已接收\n📁 文件名: {filename}\n💾 大小: {len(file_content) / 1024:.1f} KB"
+            )
+
+        except Exception as e:
+            logger.error(f"处理{msg_type}消息异常: {e}")
+            self.wechat_api.send_app_message(userid, "❌ 文件处理失败，请重试")
 
     def _send_auth_card(self, userid, original_message=None):
         """发送授权卡片，并保存用户原始消息"""
