@@ -213,12 +213,12 @@ def upload_page():
         <div class="container">
             <h1>📁 上传文件</h1>
 
-            <div class="btn-group">
+            <div class="btn-group" id="btnGroup" style="display:none">
                 <button class="btn btn-primary" id="btnChatFile" onclick="chooseChatFile()">
-                    💬 从聊天记录选择
+                    💬 重新选择文件
                 </button>
                 <button class="btn btn-secondary" id="btnLocalFile" onclick="document.getElementById('fileInput').click()">
-                    📂 从本地选择文件
+                    📂 从本地选择
                 </button>
             </div>
 
@@ -281,6 +281,10 @@ def upload_page():
                             console.log('agentConfig success');
                             wxReady = true;
                             document.getElementById('status').style.display = 'none';
+                            // 自动打开文件选择
+                            setTimeout(function() {{
+                                chooseChatFile();
+                            }}, 300);
                         }},
                         fail: function(res) {{
                             console.error('agentConfig fail:', res);
@@ -327,6 +331,7 @@ def upload_page():
                         fail: function(res) {{
                             console.log('ww.chooseMessageFile fail:', res);
                             showStatus('选择失败: ' + (res.errMsg || JSON.stringify(res)), 'error');
+                            showButtons();
                         }}
                     }});
                 }} else {{
@@ -341,8 +346,10 @@ def upload_page():
                             handleChatFiles(res.tempFiles || []);
                         }} else if (res.err_msg === 'chooseMessageFile:cancel') {{
                             document.getElementById('status').style.display = 'none';
+                            showButtons();
                         }} else {{
                             showStatus('选择失败: ' + res.err_msg, 'error');
+                            showButtons();
                         }}
                     }});
                 }}
@@ -359,6 +366,11 @@ def upload_page():
                 }});
                 renderFileList();
                 document.getElementById('status').style.display = 'none';
+                document.getElementById('btnGroup').style.display = 'flex';
+            }}
+
+            function showButtons() {{
+                document.getElementById('btnGroup').style.display = 'flex';
             }}
 
             // 处理本地文件选择
