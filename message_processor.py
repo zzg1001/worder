@@ -158,6 +158,8 @@ class MessageProcessor:
 
             # 图片类型：发送给AI处理
             if msg_type == "image":
+                # 处理图片文件名，避免乱码
+                filename = self._get_image_filename(filename)
                 self._handle_image_with_ai(userid, file_content, filename)
                 return
 
@@ -186,6 +188,35 @@ class MessageProcessor:
         except Exception as e:
             logger.error(f"处理{msg_type}消息异常: {e}")
             self.wechat_api.send_app_message(userid, "❌ 文件处理失败，请重试")
+
+    def _get_image_filename(self, original_filename):
+        """处理图片文件名，避免乱码"""
+        # 生成默认文件名：img_时间戳.png
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_name = f"img_{timestamp}.png"
+
+        if not original_filename:
+            return default_name
+
+        # 检查是否是乱码（包含非ASCII且非中文字符）
+        try:
+            # 尝试判断是否是正常的文件名
+            name, ext = os.path.splitext(original_filename)
+            # 如果扩展名正常，保留扩展名
+            if ext.lower() in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp']:
+                # 检查文件名部分是否有乱码
+                try:
+                    name.encode('utf-8').decode('utf-8')
+                    # 如果文件名太短或看起来像乱码，用默认名
+                    if len(name) < 2 or name.startswith('~'):
+                        return f"img_{timestamp}{ext}"
+                    return original_filename
+                except:
+                    return f"img_{timestamp}{ext}"
+            else:
+                return default_name
+        except:
+            return default_name
 
     def _get_pending_text(self, userid):
         """获取用户最近的文字消息（30秒内）"""
