@@ -112,192 +112,325 @@ def oauth_callback():
 # 文件保存目录
 FILE_SAVE_DIR = "/root/ai_work_order/doc"
 
+@oauth_app.route("/jsapi_signature", methods=["GET"])
+def jsapi_signature():
+    """获取JSSDK签名"""
+    url = request.args.get('url', '')
+    if not url:
+        return jsonify({"error": "缺少url参数"}), 400
+
+    sign_data = wechat_api.get_jsapi_signature(url)
+    if sign_data:
+        return jsonify(sign_data)
+    else:
+        return jsonify({"error": "获取签名失败"}), 500
+
 @oauth_app.route("/upload", methods=["GET"])
 def upload_page():
-    """文件上传页面"""
-    return """
+    """文件上传页面 - 支持从聊天记录选择文件"""
+    return f"""
     <!DOCTYPE html>
     <html lang="zh-CN">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>上传文件</title>
+        <script src="https://res.wx.qq.com/open/js/jweixin-1.2.0.js"></script>
         <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body {
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 background: #f5f5f5;
                 min-height: 100vh;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-            }
-            .container {
+                padding: 20px;
+            }}
+            .container {{
                 background: white;
-                padding: 30px;
+                padding: 25px;
                 border-radius: 12px;
                 box-shadow: 0 2px 20px rgba(0,0,0,0.1);
-                text-align: center;
-                max-width: 350px;
-                width: 90%;
-            }
-            h1 { font-size: 20px; color: #333; margin-bottom: 20px; }
-            .upload-area {
-                border: 2px dashed #ddd;
-                border-radius: 8px;
-                padding: 40px 20px;
-                margin-bottom: 20px;
-                cursor: pointer;
-                transition: all 0.3s;
-            }
-            .upload-area:hover, .upload-area.dragover {
-                border-color: #07c160;
-                background: #f0fff4;
-            }
-            .upload-area .icon { font-size: 48px; margin-bottom: 10px; }
-            .upload-area p { color: #666; font-size: 14px; }
-            .file-input { display: none; }
-            .file-info {
-                background: #f5f5f5;
-                padding: 12px;
-                border-radius: 6px;
-                margin-bottom: 20px;
-                display: none;
-                text-align: left;
-            }
-            .file-info .name { font-weight: 500; color: #333; word-break: break-all; }
-            .file-info .size { color: #999; font-size: 12px; }
-            .btn {
+                max-width: 400px;
+                margin: 0 auto;
+            }}
+            h1 {{ font-size: 18px; color: #333; margin-bottom: 20px; text-align: center; }}
+            .btn-group {{ display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }}
+            .btn {{
                 width: 100%;
-                padding: 14px;
-                background: #07c160;
-                color: white;
+                padding: 16px;
                 border: none;
-                border-radius: 6px;
+                border-radius: 8px;
                 font-size: 16px;
                 cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }}
+            .btn-primary {{ background: #07c160; color: white; }}
+            .btn-primary:active {{ background: #06ad56; }}
+            .btn-secondary {{ background: #f5f5f5; color: #333; border: 1px solid #ddd; }}
+            .btn-secondary:active {{ background: #eee; }}
+            .btn:disabled {{ background: #ccc; color: #999; }}
+            .file-list {{
+                background: #f9f9f9;
+                border-radius: 8px;
+                padding: 12px;
+                margin-bottom: 15px;
                 display: none;
-            }
-            .btn:disabled { background: #ccc; }
-            .btn:active { background: #06ad56; }
-            .status {
-                margin-top: 15px;
+            }}
+            .file-item {{
+                display: flex;
+                align-items: center;
+                padding: 8px 0;
+                border-bottom: 1px solid #eee;
+            }}
+            .file-item:last-child {{ border-bottom: none; }}
+            .file-item .icon {{ font-size: 24px; margin-right: 10px; }}
+            .file-item .info {{ flex: 1; }}
+            .file-item .name {{ font-size: 14px; color: #333; word-break: break-all; }}
+            .file-item .size {{ font-size: 12px; color: #999; }}
+            .status {{
                 padding: 12px;
                 border-radius: 6px;
+                text-align: center;
                 display: none;
-            }
-            .status.success { background: #f0fff4; color: #07c160; }
-            .status.error { background: #fff0f0; color: #f00; }
-            .loading { display: none; margin-top: 15px; color: #666; }
+            }}
+            .status.success {{ background: #f0fff4; color: #07c160; }}
+            .status.error {{ background: #fff0f0; color: #f00; }}
+            .status.info {{ background: #f0f7ff; color: #1890ff; }}
+            .tips {{
+                margin-top: 20px;
+                padding: 12px;
+                background: #fffbe6;
+                border-radius: 6px;
+                font-size: 13px;
+                color: #666;
+            }}
+            .tips p {{ margin-bottom: 5px; }}
         </style>
     </head>
     <body>
         <div class="container">
             <h1>📁 上传文件</h1>
-            <div class="upload-area" id="uploadArea">
-                <div class="icon">📄</div>
-                <p>点击选择文件<br>或拖拽文件到这里</p>
+
+            <div class="btn-group">
+                <button class="btn btn-primary" id="btnChatFile" onclick="chooseChatFile()">
+                    💬 从聊天记录选择
+                </button>
+                <button class="btn btn-secondary" id="btnLocalFile" onclick="document.getElementById('fileInput').click()">
+                    📂 从本地选择文件
+                </button>
             </div>
-            <input type="file" class="file-input" id="fileInput">
-            <div class="file-info" id="fileInfo">
-                <div class="name" id="fileName"></div>
-                <div class="size" id="fileSize"></div>
-            </div>
-            <button class="btn" id="uploadBtn">上传文件</button>
-            <div class="loading" id="loading">⏳ 上传中...</div>
+
+            <input type="file" id="fileInput" style="display:none" onchange="handleLocalFile(this)">
+
+            <div class="file-list" id="fileList"></div>
+
+            <button class="btn btn-primary" id="btnUpload" style="display:none" onclick="uploadFiles()">
+                ⬆️ 确认上传
+            </button>
+
             <div class="status" id="status"></div>
+
+            <div class="tips">
+                <p>💡 <strong>从聊天记录选择</strong>：可直接选择转发给你的文件</p>
+                <p>💡 <strong>从本地选择</strong>：选择手机/电脑上的文件</p>
+            </div>
         </div>
+
         <script>
-            const uploadArea = document.getElementById('uploadArea');
-            const fileInput = document.getElementById('fileInput');
-            const fileInfo = document.getElementById('fileInfo');
-            const fileName = document.getElementById('fileName');
-            const fileSize = document.getElementById('fileSize');
-            const uploadBtn = document.getElementById('uploadBtn');
-            const loading = document.getElementById('loading');
-            const status = document.getElementById('status');
+            const AGENT_ID = '{AGENT_ID}';
+            let filesToUpload = [];
+            let wxReady = false;
 
-            let selectedFile = null;
+            // 初始化JSSDK
+            async function initWxSDK() {{
+                try {{
+                    const resp = await fetch('/jsapi_signature?url=' + encodeURIComponent(location.href.split('#')[0]));
+                    const config = await resp.json();
 
-            uploadArea.onclick = () => fileInput.click();
+                    if (config.error) {{
+                        console.error('获取签名失败:', config.error);
+                        return;
+                    }}
 
-            uploadArea.ondragover = (e) => {
-                e.preventDefault();
-                uploadArea.classList.add('dragover');
-            };
-            uploadArea.ondragleave = () => uploadArea.classList.remove('dragover');
-            uploadArea.ondrop = (e) => {
-                e.preventDefault();
-                uploadArea.classList.remove('dragover');
-                if (e.dataTransfer.files.length) {
-                    handleFile(e.dataTransfer.files[0]);
-                }
-            };
+                    wx.config({{
+                        beta: true,
+                        debug: false,
+                        appId: config.appId,
+                        timestamp: config.timestamp,
+                        nonceStr: config.nonceStr,
+                        signature: config.signature,
+                        jsApiList: ['chooseMessageFile', 'getLocalImgData']
+                    }});
 
-            fileInput.onchange = () => {
-                if (fileInput.files.length) {
-                    handleFile(fileInput.files[0]);
-                }
-            };
+                    wx.ready(function() {{
+                        wxReady = true;
+                        console.log('JSSDK ready');
+                    }});
 
-            function handleFile(file) {
-                selectedFile = file;
-                fileName.textContent = file.name;
-                fileSize.textContent = formatSize(file.size);
-                fileInfo.style.display = 'block';
+                    wx.error(function(res) {{
+                        console.error('JSSDK error:', res);
+                    }});
+                }} catch (e) {{
+                    console.error('初始化JSSDK失败:', e);
+                }}
+            }}
+
+            // 从聊天记录选择文件
+            function chooseChatFile() {{
+                if (!wxReady) {{
+                    showStatus('正在初始化，请稍后再试...', 'info');
+                    return;
+                }}
+
+                wx.invoke('chooseMessageFile', {{
+                    count: 5,  // 最多选5个
+                    type: 'all'  // 所有类型
+                }}, function(res) {{
+                    if (res.err_msg === 'chooseMessageFile:ok') {{
+                        const files = res.tempFiles || [];
+                        files.forEach(f => {{
+                            filesToUpload.push({{
+                                name: f.name,
+                                size: f.size,
+                                path: f.tempFilePath,
+                                type: 'chat'
+                            }});
+                        }});
+                        renderFileList();
+                    }} else {{
+                        console.log('选择文件取消或失败:', res);
+                    }}
+                }});
+            }}
+
+            // 处理本地文件选择
+            function handleLocalFile(input) {{
+                const files = input.files;
+                for (let i = 0; i < files.length; i++) {{
+                    filesToUpload.push({{
+                        name: files[i].name,
+                        size: files[i].size,
+                        file: files[i],
+                        type: 'local'
+                    }});
+                }}
+                renderFileList();
+                input.value = '';
+            }}
+
+            // 渲染文件列表
+            function renderFileList() {{
+                const list = document.getElementById('fileList');
+                const uploadBtn = document.getElementById('btnUpload');
+
+                if (filesToUpload.length === 0) {{
+                    list.style.display = 'none';
+                    uploadBtn.style.display = 'none';
+                    return;
+                }}
+
+                list.innerHTML = filesToUpload.map((f, i) => `
+                    <div class="file-item">
+                        <span class="icon">${{getFileIcon(f.name)}}</span>
+                        <div class="info">
+                            <div class="name">${{f.name}}</div>
+                            <div class="size">${{formatSize(f.size)}}</div>
+                        </div>
+                    </div>
+                `).join('');
+
+                list.style.display = 'block';
                 uploadBtn.style.display = 'block';
-                status.style.display = 'none';
-            }
+            }}
 
-            function formatSize(bytes) {
+            // 获取文件图标
+            function getFileIcon(name) {{
+                const ext = name.split('.').pop().toLowerCase();
+                const icons = {{
+                    'pdf': '📕', 'doc': '📘', 'docx': '📘',
+                    'xls': '📗', 'xlsx': '📗', 'ppt': '📙', 'pptx': '📙',
+                    'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️',
+                    'mp4': '🎬', 'mp3': '🎵', 'zip': '📦', 'rar': '📦',
+                    'txt': '📝', 'py': '🐍', 'js': '📜', 'html': '🌐'
+                }};
+                return icons[ext] || '📄';
+            }}
+
+            // 格式化文件大小
+            function formatSize(bytes) {{
                 if (bytes < 1024) return bytes + ' B';
                 if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
                 return (bytes / 1024 / 1024).toFixed(1) + ' MB';
-            }
+            }}
 
-            uploadBtn.onclick = async () => {
-                if (!selectedFile) return;
+            // 上传文件
+            async function uploadFiles() {{
+                if (filesToUpload.length === 0) return;
 
+                const uploadBtn = document.getElementById('btnUpload');
                 uploadBtn.disabled = true;
-                loading.style.display = 'block';
-                status.style.display = 'none';
+                uploadBtn.innerHTML = '⏳ 上传中...';
 
-                const formData = new FormData();
-                formData.append('file', selectedFile);
+                let successCount = 0;
+                let failCount = 0;
 
-                try {
-                    const resp = await fetch('/upload', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    const result = await resp.json();
+                for (const f of filesToUpload) {{
+                    try {{
+                        const formData = new FormData();
 
-                    loading.style.display = 'none';
-                    status.style.display = 'block';
+                        if (f.type === 'local') {{
+                            formData.append('file', f.file);
+                        }} else {{
+                            // 聊天文件需要先获取blob
+                            const resp = await fetch(f.path);
+                            const blob = await resp.blob();
+                            formData.append('file', blob, f.name);
+                        }}
 
-                    if (result.success) {
-                        status.className = 'status success';
-                        status.textContent = '✅ 上传成功！';
-                        setTimeout(() => {
-                            if (window.WeixinJSBridge) {
-                                WeixinJSBridge.call('closeWindow');
-                            } else {
-                                window.close();
-                            }
-                        }, 1500);
-                    } else {
-                        status.className = 'status error';
-                        status.textContent = '❌ ' + (result.error || '上传失败');
-                        uploadBtn.disabled = false;
-                    }
-                } catch (e) {
-                    loading.style.display = 'none';
-                    status.style.display = 'block';
-                    status.className = 'status error';
-                    status.textContent = '❌ 网络错误，请重试';
+                        const result = await fetch('/upload', {{
+                            method: 'POST',
+                            body: formData
+                        }});
+                        const data = await result.json();
+
+                        if (data.success) {{
+                            successCount++;
+                        }} else {{
+                            failCount++;
+                        }}
+                    }} catch (e) {{
+                        console.error('上传失败:', e);
+                        failCount++;
+                    }}
+                }}
+
+                if (failCount === 0) {{
+                    showStatus(`✅ 全部上传成功！共 ${{successCount}} 个文件`, 'success');
+                    setTimeout(() => {{
+                        if (window.WeixinJSBridge) {{
+                            WeixinJSBridge.call('closeWindow');
+                        }} else {{
+                            window.close();
+                        }}
+                    }}, 1500);
+                }} else {{
+                    showStatus(`上传完成：成功 ${{successCount}} 个，失败 ${{failCount}} 个`, 'error');
                     uploadBtn.disabled = false;
-                }
-            };
+                    uploadBtn.innerHTML = '⬆️ 重新上传';
+                }}
+            }}
+
+            function showStatus(msg, type) {{
+                const status = document.getElementById('status');
+                status.textContent = msg;
+                status.className = 'status ' + type;
+                status.style.display = 'block';
+            }}
+
+            // 页面加载时初始化
+            initWxSDK();
         </script>
     </body>
     </html>

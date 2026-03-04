@@ -350,6 +350,55 @@ class WeChatAPI:
             logger.error(f"获取userdetail异常: {e}")
             return None
 
+    def get_jsapi_ticket(self, force_refresh=False):
+        """获取jsapi_ticket（用于JSSDK签名）"""
+        if not hasattr(self, '_jsapi_ticket_cache'):
+            self._jsapi_ticket_cache = {"ticket": None, "expire_time": 0}
+
+        now = time.time()
+        if not force_refresh and self._jsapi_ticket_cache["ticket"] and now < self._jsapi_ticket_cache["expire_time"]:
+            return self._jsapi_ticket_cache["ticket"]
+
+        access_token = self.get_access_token()
+        if not access_token:
+            return None
+
+        url = f"https://qyapi.weixin.qq.com/cgi-bin/get_jsapi_ticket?access_token={access_token}"
+        try:
+            resp = requests.get(url, timeout=10).json()
+            if resp.get("errcode") == 0:
+                self._jsapi_ticket_cache["ticket"] = resp["ticket"]
+                self._jsapi_ticket_cache["expire_time"] = now + 7100
+                logger.info("jsapi_ticket获取成功")
+                return resp["ticket"]
+            else:
+                logger.error(f"获取jsapi_ticket失败: {resp}")
+                return None
+        except Exception as e:
+            logger.error(f"获取jsapi_ticket异常: {e}")
+            return None
+
+    def get_jsapi_signature(self, url):
+        """生成JSSDK签名"""
+        import hashlib
+        ticket = self.get_jsapi_ticket()
+        if not ticket:
+            return None
+
+        timestamp = str(int(time.time()))
+        noncestr = hashlib.md5(f"{timestamp}".encode()).hexdigest()[:16]
+
+        # 签名字符串
+        sign_str = f"jsapi_ticket={ticket}&noncestr={noncestr}&timestamp={timestamp}&url={url}"
+        signature = hashlib.sha1(sign_str.encode()).hexdigest()
+
+        return {
+            "appId": self.corp_id,
+            "timestamp": timestamp,
+            "nonceStr": noncestr,
+            "signature": signature
+        }
+
     def download_media(self, media_id):
         """下载媒体文件（图片、语音、视频、文件）
 
