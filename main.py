@@ -246,10 +246,16 @@ def upload_page():
             // 初始化JSSDK
             async function initWxSDK() {{
                 try {{
-                    const resp = await fetch('/jsapi_signature?url=' + encodeURIComponent(location.href.split('#')[0]));
+                    showStatus('正在初始化...', 'info');
+                    const signUrl = '/jsapi_signature?url=' + encodeURIComponent(location.href.split('#')[0]);
+                    console.log('请求签名:', signUrl);
+
+                    const resp = await fetch(signUrl);
                     const config = await resp.json();
+                    console.log('签名结果:', config);
 
                     if (config.error) {{
+                        showStatus('初始化失败: ' + config.error, 'error');
                         console.error('获取签名失败:', config.error);
                         return;
                     }}
@@ -267,13 +273,16 @@ def upload_page():
                     wx.ready(function() {{
                         wxReady = true;
                         console.log('JSSDK ready');
+                        document.getElementById('status').style.display = 'none';
                     }});
 
                     wx.error(function(res) {{
                         console.error('JSSDK error:', res);
+                        showStatus('JSSDK错误: ' + JSON.stringify(res), 'error');
                     }});
                 }} catch (e) {{
                     console.error('初始化JSSDK失败:', e);
+                    showStatus('初始化异常: ' + e.message, 'error');
                 }}
             }}
 
