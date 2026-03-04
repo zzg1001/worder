@@ -433,6 +433,13 @@ def upload_page():
                 return (bytes / 1024 / 1024).toFixed(1) + ' MB';
             }}
 
+            // 获取URL参数中的userid
+            function getUserId() {{
+                const params = new URLSearchParams(window.location.search);
+                return params.get('userid') || '';
+            }}
+            const currentUserId = getUserId();
+
             // 上传文件
             async function uploadFiles() {{
                 if (filesToUpload.length === 0) return;
@@ -447,6 +454,7 @@ def upload_page():
                 for (const f of filesToUpload) {{
                     try {{
                         const formData = new FormData();
+                        formData.append('userid', currentUserId);
 
                         if (f.type === 'local') {{
                             formData.append('file', f.file);
@@ -508,6 +516,9 @@ def upload_page():
 def upload_file():
     """文件上传接口"""
     try:
+        # 获取用户ID
+        userid = request.form.get('userid') or request.args.get('userid', '')
+
         if 'file' not in request.files:
             return jsonify({"success": False, "error": "没有选择文件"}), 400
 
@@ -522,13 +533,19 @@ def upload_file():
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         original_name = file.filename
         name, ext = os.path.splitext(original_name)
-        save_filename = f"{timestamp}_{name}{ext}"
+        save_filename = f"{userid}_{timestamp}_{name}{ext}" if userid else f"{timestamp}_{name}{ext}"
         save_path = os.path.join(FILE_SAVE_DIR, save_filename)
 
         # 保存文件
         file.save(save_path)
+        file_size = os.path.getsize(save_path)
 
-        logger.info(f"文件上传成功: {save_path}")
+        logger.info(f"文件上传成功: {save_path}, 用户: {userid}")
+
+        # 发送消息通知用户
+        if userid:
+            size_str = f"{file_size / 1024:.1f}KB" if file_size < 1024 * 1024 else f"{file_size / 1024 / 1024:.1f}MB"
+            wechat_api.send_app_message(userid, f"✅ 文件上传成功\n📄 {original_name}\n💾 大小: {size_str}")
 
         return jsonify({
             "success": True,

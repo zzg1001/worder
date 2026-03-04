@@ -106,8 +106,8 @@ class MessageProcessor:
             print(ai_reply)
             print("#" * 60 + "\n")
 
-            # 9. 发送回复（附带上传链接）
-            upload_url = "https://yjservicetest.ike-data.com/upload"
+            # 9. 发送回复（附带上传链接，带用户ID）
+            upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
             reply_with_upload = f"{ai_reply}<a href='{upload_url}'>上传附件</a>"
             self.wechat_api.send_app_message(userid, reply_with_upload)
 

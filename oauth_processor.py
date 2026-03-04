@@ -106,8 +106,8 @@ class OAuthProcessor:
             print(ai_reply)
             print("#" * 60 + "\n")
 
-            # 发送AI回复给用户（附带上传链接）
-            upload_url = "https://yjservicetest.ike-data.com/upload"
+            # 发送AI回复给用户（附带上传链接，带用户ID）
+            upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
             reply_with_upload = f"{ai_reply}<a href='{upload_url}'>上传附件</a>"
             self.wechat_api.send_app_message(userid, reply_with_upload)
             logger.info(f"授权后自动处理消息成功: userid={userid}")
