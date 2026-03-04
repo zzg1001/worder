@@ -27,6 +27,9 @@ class MessageProcessor:
     def process(self, plain_xml):
         """处理消息入口"""
         try:
+            # 打印原始XML便于调试
+            logger.info(f"收到原始消息XML: {plain_xml}")
+
             root = ET.fromstring(plain_xml)
 
             msg_type = root.findtext("MsgType", "")
