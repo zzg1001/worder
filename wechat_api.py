@@ -85,6 +85,7 @@ class WeChatAPI:
         url = f"https://qyapi.weixin.qq.com/cgi-bin/user/get?access_token={access_token}&userid={userid}"
         try:
             resp = requests.get(url, timeout=10).json()
+            logger.info(f"获取用户信息API返回: {resp}")
             if resp.get("errcode") == 0:
                 return {
                     "errcode": 0,
