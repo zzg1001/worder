@@ -83,8 +83,12 @@ class WeChatAPI:
         try:
             resp = requests.get(url, timeout=10).json()
             if resp.get("errcode") == 0:
-                return {d['id']: d['name'] for d in resp.get('department', [])}
-            return {}
+                dept_map = {d['id']: d['name'] for d in resp.get('department', [])}
+                logger.info(f"获取部门列表成功: {len(dept_map)}个部门")
+                return dept_map
+            else:
+                logger.warning(f"获取部门列表失败: {resp}")
+                return {}
         except Exception as e:
             logger.error(f"获取部门列表异常: {e}")
             return {}

@@ -38,13 +38,16 @@ class UserManager:
         # 2. 获取部门名称
         dept_names = []
         dept_ids = user_info.get('department', [])
+        logger.info(f"用户 {userid} 部门ID: {dept_ids}")
 
         if dept_ids:
             # 获取部门列表
             dept_list = self.wechat_api.get_department_list()
+            logger.info(f"部门列表: {dept_list}")
             for dept_id in dept_ids:
                 if dept_id in dept_list:
                     dept_names.append(dept_list[dept_id])
+            logger.info(f"用户 {userid} 部门名称: {dept_names}")
 
         # 3. 组装数据
         user_data = {
@@ -66,7 +69,7 @@ class UserManager:
         return user_data if success else None
 
     def get_user_context(self, userid):
-        """获取用户上下文信息（用于AI对话）- 只获取姓名和手机号"""
+        """获取用户上下文信息（用于AI对话）"""
         user = self.db.get_user(userid)
 
         if not user:
@@ -75,11 +78,12 @@ class UserManager:
         return {
             'userid': user['userid'],
             'name': user['name'],
-            'mobile': user['mobile']
+            'mobile': user['mobile'],
+            'department': user.get('department_names', '')
         }
 
     def format_user_info_for_display(self, user_context):
-        """格式化用户信息用于显示 - 只显示姓名和手机号"""
+        """格式化用户信息用于显示"""
         if not user_context:
             return "【未获取用户信息】"
 
@@ -89,15 +93,17 @@ class UserManager:
             "=" * 60,
             f"  姓名: {user_context['name']}",
             f"  手机号: {user_context['mobile']}",
+            f"  部门: {user_context.get('department', '') or '未知'}",
             "=" * 60
         ]
         return "\n".join(lines)
 
     def format_user_info_for_ai(self, user_context, message):
-        """格式化用户信息给AI - 只发送姓名和手机号"""
+        """格式化用户信息给AI"""
         if not user_context:
             return message
 
-        identity = f"[用户身份] 姓名:{user_context['name']} 手机号:{user_context['mobile']}"
+        dept = user_context.get('department', '') or '未知'
+        identity = f"[用户身份] 姓名:{user_context['name']} 手机号:{user_context['mobile']} 部门:{dept}"
 
         return f"{identity}\n[用户消息] {message}"
