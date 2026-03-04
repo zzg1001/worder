@@ -29,6 +29,14 @@ class WXBizMsgCrypt:
 
     def decrypt_msg(self, sig, ts, nonce, post_data):
         try:
+            # 调试日志
+            logger.info(f"解密参数: sig={sig}, ts={ts}, nonce={nonce}")
+            logger.info(f"post_data类型: {type(post_data)}, 长度: {len(post_data) if post_data else 0}")
+
+            # 确保post_data是字符串
+            if isinstance(post_data, bytes):
+                post_data = post_data.decode('utf-8')
+
             root = ET.fromstring(post_data)
             encrypt = root.find("Encrypt")
             if encrypt is None:
@@ -36,6 +44,10 @@ class WXBizMsgCrypt:
             encrypt = encrypt.text
 
             if not self._check_sig(sig, ts, nonce, encrypt):
+                # 打印更多调试信息
+                sort_str = "".join(sorted([self.token, str(ts), str(nonce), encrypt]))
+                expected_sig = hashlib.sha1(sort_str.encode()).hexdigest()
+                logger.error(f"签名不匹配: 收到={sig}, 期望={expected_sig}")
                 raise ValueError("signature验证失败")
             return self._decrypt(encrypt)
         except ET.ParseError as e:
