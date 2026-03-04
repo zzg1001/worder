@@ -8,6 +8,7 @@ import os
 # ========== 企业微信配置 ==========
 CORP_ID = "ww916ee9aaff82d432"
 CORP_SECRET = "5lljSaa2TBcYqAMxvC7HZ6gIQHVMbeiMF657sbS9sWY"
+CONTACTS_SECRET = "CEoy_E-Y18TaUrQlk2bcgiWcOADjWSkPkibJdXi1LVM"  # 通讯录Secret
 TOKEN = "G18rPJGiiuWo8WQf68wWggeJbHY"
 ENCODING_AES_KEY = "HTNGvKDbsDXkoOc7amRY8Xr2LU3MabI6wf6q8NPgmlL"
 AGENT_ID = "1000012"

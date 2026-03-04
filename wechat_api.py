@@ -13,11 +13,16 @@ logger = logging.getLogger(__name__)
 class WeChatAPI:
     """企业微信API客户端"""
 
-    def __init__(self, corp_id, corp_secret, agent_id):
+    def __init__(self, corp_id, corp_secret, agent_id, contacts_secret=None):
         self.corp_id = corp_id
         self.corp_secret = corp_secret
+        self.contacts_secret = contacts_secret
         self.agent_id = int(agent_id)
         self._token_cache = {
+            "access_token": None,
+            "expire_time": 0
+        }
+        self._contacts_token_cache = {
             "access_token": None,
             "expire_time": 0
         }
@@ -44,9 +49,34 @@ class WeChatAPI:
             logger.error(f"获取token异常: {e}")
             return None
 
+    def get_contacts_access_token(self, force_refresh=False):
+        """获取通讯录AccessToken（用于获取部门和用户信息）"""
+        if not self.contacts_secret:
+            logger.warning("未配置通讯录Secret，使用应用Token")
+            return self.get_access_token(force_refresh)
+
+        now = time.time()
+        if not force_refresh and self._contacts_token_cache["access_token"] and now < self._contacts_token_cache["expire_time"]:
+            return self._contacts_token_cache["access_token"]
+
+        url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={self.corp_id}&corpsecret={self.contacts_secret}"
+        try:
+            resp = requests.get(url, timeout=10).json()
+            if resp.get("access_token"):
+                self._contacts_token_cache["access_token"] = resp["access_token"]
+                self._contacts_token_cache["expire_time"] = now + 7100
+                logger.info("通讯录AccessToken获取成功")
+                return resp["access_token"]
+            else:
+                logger.error(f"获取通讯录token失败: {resp}")
+                return None
+        except Exception as e:
+            logger.error(f"获取通讯录token异常: {e}")
+            return None
+
     def get_user_info(self, userid):
         """获取用户基本信息（包含部门）"""
-        access_token = self.get_access_token()
+        access_token = self.get_contacts_access_token()
         if not access_token:
             return None
 
@@ -75,7 +105,7 @@ class WeChatAPI:
 
     def get_department_list(self):
         """获取部门列表"""
-        access_token = self.get_access_token()
+        access_token = self.get_contacts_access_token()
         if not access_token:
             return {}
 
