@@ -315,29 +315,50 @@ def upload_page():
 
                 showStatus('正在打开文件选择...', 'info');
 
-                wx.invoke('chooseMessageFile', {{
-                    count: 5,  // 最多选5个
-                    type: 'all'  // 所有类型
-                }}, function(res) {{
-                    console.log('chooseMessageFile result:', res);
+                // 尝试使用 ww.chooseMessageFile（企业微信专用）
+                if (typeof ww !== 'undefined' && ww.chooseMessageFile) {{
+                    ww.chooseMessageFile({{
+                        count: 5,
+                        type: 'file',
+                        success: function(res) {{
+                            console.log('ww.chooseMessageFile success:', res);
+                            handleChatFiles(res.tempFiles || []);
+                        }},
+                        fail: function(res) {{
+                            console.log('ww.chooseMessageFile fail:', res);
+                            showStatus('选择失败: ' + (res.errMsg || JSON.stringify(res)), 'error');
+                        }}
+                    }});
+                }} else {{
+                    // 使用 wx.invoke 方式
+                    wx.invoke('chooseMessageFile', {{
+                        count: 5,
+                        type: 'file'  // 只选择文件类型
+                    }}, function(res) {{
+                        console.log('chooseMessageFile result:', res);
 
-                    if (res.err_msg === 'chooseMessageFile:ok') {{
-                        const files = res.tempFiles || [];
-                        files.forEach(f => {{
-                            filesToUpload.push({{
-                                name: f.name,
-                                size: f.size,
-                                path: f.tempFilePath,
-                                type: 'chat'
-                            }});
-                        }});
-                        renderFileList();
-                        document.getElementById('status').style.display = 'none';
-                    }} else {{
-                        showStatus('选择取消或失败: ' + res.err_msg, 'error');
-                        console.log('选择文件取消或失败:', res);
-                    }}
+                        if (res.err_msg === 'chooseMessageFile:ok') {{
+                            handleChatFiles(res.tempFiles || []);
+                        }} else if (res.err_msg === 'chooseMessageFile:cancel') {{
+                            document.getElementById('status').style.display = 'none';
+                        }} else {{
+                            showStatus('选择失败: ' + res.err_msg, 'error');
+                        }}
+                    }});
+                }}
+            }}
+
+            function handleChatFiles(files) {{
+                files.forEach(f => {{
+                    filesToUpload.push({{
+                        name: f.name,
+                        size: f.size,
+                        path: f.tempFilePath,
+                        type: 'chat'
+                    }});
                 }});
+                renderFileList();
+                document.getElementById('status').style.display = 'none';
             }}
 
             // 处理本地文件选择
