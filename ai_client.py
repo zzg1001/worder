@@ -6,6 +6,7 @@ ai_client.py - AI接口客户端（原文件提取）
 import json
 import logging
 import requests
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +18,50 @@ class AIClient:
         self.api_url = api_url
         self.api_key = api_key
         self._conversation_ids = {}
+        # 从chat-messages URL推导出基础URL
+        self.base_url = api_url.replace("/chat-messages", "")
 
-    def chat(self, user_id, message):
-        """发送消息到AI并获取回复"""
+    def upload_image(self, image_data, filename, user_id):
+        """上传图片到Dify，返回file_id"""
+        upload_url = f"{self.base_url}/files/upload"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}"
+        }
+
+        try:
+            files = {
+                'file': (filename, image_data, 'image/png')
+            }
+            data = {
+                'user': user_id
+            }
+
+            resp = requests.post(
+                upload_url,
+                headers=headers,
+                files=files,
+                data=data,
+                timeout=30
+            )
+            resp.raise_for_status()
+
+            result = resp.json()
+            file_id = result.get('id')
+            logger.info(f"图片上传成功: file_id={file_id}")
+            return file_id
+
+        except Exception as e:
+            logger.error(f"图片上传失败: {e}")
+            return None
+
+    def chat(self, user_id, message, files=None):
+        """发送消息到AI并获取回复
+
+        Args:
+            user_id: 用户ID
+            message: 消息内容
+            files: 文件列表，格式为 [{"type": "image", "transfer_method": "local_file", "upload_file_id": "xxx"}]
+        """
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -33,7 +75,7 @@ class AIClient:
             "response_mode": "streaming",
             "conversation_id": conversation_id,
             "user": user_id,
-            "files": []
+            "files": files or []
         }
 
         try:

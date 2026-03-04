@@ -8,11 +8,15 @@ import logging
 import threading
 import xml.etree.ElementTree as ET
 from datetime import datetime
+import time
 
 logger = logging.getLogger(__name__)
 
 # 文件保存目录
 FILE_SAVE_DIR = "/root/ai_work_order/doc"
+
+# 消息关联时间窗口（秒）
+MESSAGE_LINK_WINDOW = 30
 
 
 class MessageProcessor:
@@ -23,6 +27,8 @@ class MessageProcessor:
         self.ai_client = ai_client
         self.user_manager = user_manager
         self.auth_manager = auth_manager
+        # 保存用户最近的文字消息 {userid: {"content": "xxx", "time": timestamp}}
+        self._pending_text = {}
 
     def process(self, plain_xml):
         """处理消息入口"""
@@ -68,6 +74,16 @@ class MessageProcessor:
     def _handle_message(self, userid, content):
         """处理单条消息"""
         try:
+            # 检查是否是图片关联消息（#开头）
+            if content.startswith("#"):
+                # 保存到pending，等待图片，不立即处理
+                self._pending_text[userid] = {
+                    "content": content[1:].strip(),  # 去掉#号
+                    "time": time.time()
+                }
+                logger.info(f"收到图片关联消息，等待图片: {content}")
+                return
+
             # 1. 检查用户是否已授权（数据库中有手机号）
             is_authorized, user_info = self.user_manager.check_user_authorized(userid)
 
@@ -140,6 +156,12 @@ class MessageProcessor:
             if original_filename:
                 filename = original_filename
 
+            # 图片类型：发送给AI处理
+            if msg_type == "image":
+                self._handle_image_with_ai(userid, file_content, filename)
+                return
+
+            # 其他文件类型：保存到目录
             # 确保目录存在
             os.makedirs(FILE_SAVE_DIR, exist_ok=True)
 
@@ -164,6 +186,90 @@ class MessageProcessor:
         except Exception as e:
             logger.error(f"处理{msg_type}消息异常: {e}")
             self.wechat_api.send_app_message(userid, "❌ 文件处理失败，请重试")
+
+    def _get_pending_text(self, userid):
+        """获取用户最近的文字消息（30秒内）"""
+        pending = self._pending_text.get(userid)
+        if pending:
+            # 检查是否在时间窗口内
+            if time.time() - pending["time"] <= MESSAGE_LINK_WINDOW:
+                # 清除pending，避免重复使用
+                del self._pending_text[userid]
+                return pending["content"]
+            else:
+                # 过期，清除
+                del self._pending_text[userid]
+        return None
+
+    def _handle_image_with_ai(self, userid, image_data, filename):
+        """处理图片消息，发送给AI解析"""
+        try:
+            # 1. 检查用户是否已授权
+            is_authorized, user_info = self.user_manager.check_user_authorized(userid)
+
+            if not is_authorized:
+                # 未授权，发送授权卡片
+                self._send_auth_card(userid)
+                return
+
+            # 2. 检查是否有关联的文字消息
+            linked_text = self._get_pending_text(userid)
+
+            # 3. 发送等待提示
+            self.wechat_api.send_app_message(userid, "⏳ 正在解析图片，请稍候...")
+
+            # 4. 上传图片到AI
+            file_id = self.ai_client.upload_image(image_data, filename, userid)
+            if not file_id:
+                self.wechat_api.send_app_message(userid, "❌ 图片上传失败，请重试")
+                return
+
+            # 5. 获取用户上下文
+            user_context = self.user_manager.get_user_context(userid)
+
+            # 6. 构建消息（有关联文字就用关联文字，没有就空）
+            user_message = linked_text if linked_text else ""
+            message_with_context = self.user_manager.format_user_info_for_ai(
+                user_context,
+                user_message
+            ) if user_message else ""
+
+            # 7. 打印发送给AI的消息
+            print("\n" + "*" * 60)
+            print("*" + " " * 16 + ">>> 发送给AI的图片消息 <<<" + " " * 15 + "*")
+            print("*" * 60)
+            print(f"图片文件: {filename}")
+            print(f"文件ID: {file_id}")
+            print(f"关联文字: {linked_text if linked_text else '(无)'}")
+            if message_with_context:
+                print(message_with_context)
+            print("*" * 60 + "\n")
+
+            # 8. 调用AI（带图片）
+            files = [{
+                "type": "image",
+                "transfer_method": "local_file",
+                "upload_file_id": file_id
+            }]
+            # 如果没有文字，query传空字符串
+            query = message_with_context if message_with_context else ""
+            ai_reply = self.ai_client.chat(userid, query, files=files)
+
+            # 9. 打印AI返回的回复
+            print("\n" + "#" * 60)
+            print("#" + " " * 18 + "<<< AI返回的回复 >>>" + " " * 19 + "#")
+            print("#" * 60)
+            print(ai_reply)
+            print("#" * 60 + "\n")
+
+            # 10. 发送回复（附带上传链接）
+            upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
+            reply_with_upload = f"{ai_reply} <a href='{upload_url}'>上传附件</a>"
+            self.wechat_api.send_app_message(userid, reply_with_upload)
+
+        except Exception as e:
+            logger.error(f"处理图片消息异常: {e}")
+            self.wechat_api.send_app_message(userid, "❌ 图片处理失败，请重试")
 
     def _send_auth_card(self, userid, original_message=None):
         """发送授权卡片，并保存用户原始消息"""
