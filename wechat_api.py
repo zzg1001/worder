@@ -378,25 +378,64 @@ class WeChatAPI:
             logger.error(f"获取jsapi_ticket异常: {e}")
             return None
 
+    def get_agent_jsapi_ticket(self, force_refresh=False):
+        """获取应用的jsapi_ticket（用于agentConfig签名）"""
+        if not hasattr(self, '_agent_jsapi_ticket_cache'):
+            self._agent_jsapi_ticket_cache = {"ticket": None, "expire_time": 0}
+
+        now = time.time()
+        if not force_refresh and self._agent_jsapi_ticket_cache["ticket"] and now < self._agent_jsapi_ticket_cache["expire_time"]:
+            return self._agent_jsapi_ticket_cache["ticket"]
+
+        access_token = self.get_access_token()
+        if not access_token:
+            return None
+
+        url = f"https://qyapi.weixin.qq.com/cgi-bin/ticket/get?access_token={access_token}&type=agent_config"
+        try:
+            resp = requests.get(url, timeout=10).json()
+            if resp.get("errcode") == 0:
+                self._agent_jsapi_ticket_cache["ticket"] = resp["ticket"]
+                self._agent_jsapi_ticket_cache["expire_time"] = now + 7100
+                logger.info("agent_jsapi_ticket获取成功")
+                return resp["ticket"]
+            else:
+                logger.error(f"获取agent_jsapi_ticket失败: {resp}")
+                return None
+        except Exception as e:
+            logger.error(f"获取agent_jsapi_ticket异常: {e}")
+            return None
+
     def get_jsapi_signature(self, url):
-        """生成JSSDK签名"""
+        """生成JSSDK签名（包含corp和agent两个签名）"""
         import hashlib
-        ticket = self.get_jsapi_ticket()
-        if not ticket:
+
+        # 企业签名
+        corp_ticket = self.get_jsapi_ticket()
+        if not corp_ticket:
             return None
 
         timestamp = str(int(time.time()))
         noncestr = hashlib.md5(f"{timestamp}".encode()).hexdigest()[:16]
 
-        # 签名字符串
-        sign_str = f"jsapi_ticket={ticket}&noncestr={noncestr}&timestamp={timestamp}&url={url}"
-        signature = hashlib.sha1(sign_str.encode()).hexdigest()
+        # 企业签名
+        corp_sign_str = f"jsapi_ticket={corp_ticket}&noncestr={noncestr}&timestamp={timestamp}&url={url}"
+        corp_signature = hashlib.sha1(corp_sign_str.encode()).hexdigest()
+
+        # 应用签名
+        agent_ticket = self.get_agent_jsapi_ticket()
+        agent_signature = ""
+        if agent_ticket:
+            agent_sign_str = f"jsapi_ticket={agent_ticket}&noncestr={noncestr}&timestamp={timestamp}&url={url}"
+            agent_signature = hashlib.sha1(agent_sign_str.encode()).hexdigest()
 
         return {
             "appId": self.corp_id,
+            "agentId": self.agent_id,
             "timestamp": timestamp,
             "nonceStr": noncestr,
-            "signature": signature
+            "signature": corp_signature,
+            "agentSignature": agent_signature
         }
 
     def download_media(self, media_id):

@@ -135,7 +135,7 @@ def upload_page():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>上传文件</title>
-        <script src="https://res.wx.qq.com/open/js/jweixin-1.2.0.js"></script>
+        <script src="https://res.wx.qq.com/wwopen/js/jsapi/jweixin-1.0.0.js"></script>
         <style>
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             body {{
@@ -267,18 +267,36 @@ def upload_page():
                         timestamp: config.timestamp,
                         nonceStr: config.nonceStr,
                         signature: config.signature,
-                        jsApiList: ['chooseMessageFile', 'getLocalImgData']
+                        jsApiList: ['chooseMessageFile']
+                    }});
+
+                    wx.agentConfig({{
+                        corpid: config.appId,
+                        agentid: config.agentId,
+                        timestamp: config.timestamp,
+                        nonceStr: config.nonceStr,
+                        signature: config.agentSignature,
+                        jsApiList: ['chooseMessageFile'],
+                        success: function(res) {{
+                            console.log('agentConfig success');
+                            wxReady = true;
+                            document.getElementById('status').style.display = 'none';
+                        }},
+                        fail: function(res) {{
+                            console.error('agentConfig fail:', res);
+                            if (res.errMsg) {{
+                                showStatus('应用配置失败: ' + res.errMsg, 'error');
+                            }}
+                        }}
                     }});
 
                     wx.ready(function() {{
-                        wxReady = true;
-                        console.log('JSSDK ready');
-                        document.getElementById('status').style.display = 'none';
+                        console.log('wx.config ready, waiting for agentConfig...');
                     }});
 
                     wx.error(function(res) {{
-                        console.error('JSSDK error:', res);
-                        showStatus('JSSDK错误: ' + JSON.stringify(res), 'error');
+                        console.error('wx.config error:', res);
+                        showStatus('配置错误: ' + (res.errMsg || JSON.stringify(res)), 'error');
                     }});
                 }} catch (e) {{
                     console.error('初始化JSSDK失败:', e);
@@ -288,15 +306,21 @@ def upload_page():
 
             // 从聊天记录选择文件
             function chooseChatFile() {{
+                console.log('chooseChatFile called, wxReady:', wxReady);
+
                 if (!wxReady) {{
                     showStatus('正在初始化，请稍后再试...', 'info');
                     return;
                 }}
 
+                showStatus('正在打开文件选择...', 'info');
+
                 wx.invoke('chooseMessageFile', {{
                     count: 5,  // 最多选5个
                     type: 'all'  // 所有类型
                 }}, function(res) {{
+                    console.log('chooseMessageFile result:', res);
+
                     if (res.err_msg === 'chooseMessageFile:ok') {{
                         const files = res.tempFiles || [];
                         files.forEach(f => {{
@@ -308,7 +332,9 @@ def upload_page():
                             }});
                         }});
                         renderFileList();
+                        document.getElementById('status').style.display = 'none';
                     }} else {{
+                        showStatus('选择取消或失败: ' + res.err_msg, 'error');
                         console.log('选择文件取消或失败:', res);
                     }}
                 }});
