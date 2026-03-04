@@ -78,6 +78,15 @@ class AIClient:
             "files": files or []
         }
 
+        # 打印完整请求
+        print("\n" + "=" * 60)
+        print(">>> AI接口请求 <<<")
+        print("=" * 60)
+        print(f"URL: {self.api_url}")
+        print(f"Headers: {json.dumps(headers, ensure_ascii=False, indent=2)}")
+        print(f"Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}")
+        print("=" * 60 + "\n")
+
         try:
             resp = requests.post(
                 self.api_url,
