@@ -78,7 +78,7 @@ class WeChatAPI:
 
     def get_user_info(self, userid):
         """获取用户基本信息（包含部门）"""
-        access_token = self.get_contacts_access_token()
+        access_token = self.get_access_token()
         if not access_token:
             return None
 
@@ -107,7 +107,7 @@ class WeChatAPI:
 
     def get_department_list(self):
         """获取部门列表"""
-        access_token = self.get_contacts_access_token()
+        access_token = self.get_access_token()
         if not access_token:
             return {}
 
