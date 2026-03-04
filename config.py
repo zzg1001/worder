@@ -17,6 +17,10 @@ AGENT_ID = "1000012"
 AI_API_URL = "http://47.100.100.139:8028/v1/chat-messages"
 AI_API_KEY = "app-9PcBKF15xLSzND8z25XwVkGe"
 
+# ========== 图片AI接口配置（workflow） ==========
+IMAGE_AI_API_URL = "http://47.100.100.139:8028/v1/workflows/run"
+IMAGE_AI_API_KEY = "app-KPd1NBWxgrF1Yorx3wqk2lNm"
+
 # ========== 服务端口配置 ==========
 MAIN_PORT = 8091
 OAUTH_PORT = 8092

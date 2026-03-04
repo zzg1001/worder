@@ -14,12 +14,15 @@ logger = logging.getLogger(__name__)
 class AIClient:
     """AI服务客户端"""
 
-    def __init__(self, api_url, api_key):
+    def __init__(self, api_url, api_key, image_api_url=None, image_api_key=None):
         self.api_url = api_url
         self.api_key = api_key
         self._conversation_ids = {}
         # 从chat-messages URL推导出基础URL
         self.base_url = api_url.replace("/chat-messages", "")
+        # 图片AI接口配置
+        self.image_api_url = image_api_url
+        self.image_api_key = image_api_key
 
     def upload_image(self, image_data, filename, user_id):
         """上传图片到Dify，返回file_id"""
@@ -121,3 +124,65 @@ class AIClient:
         except Exception as e:
             logger.error(f"AI调用异常: {e}")
             return "AI服务暂时不可用，请稍后重试"
+
+    def analyze_image(self, user_id, file_id, text_content=None):
+        """调用图片解析workflow接口"""
+        if not self.image_api_url or not self.image_api_key:
+            logger.error("图片AI接口未配置")
+            return "图片解析服务未配置"
+
+        headers = {
+            "Authorization": f"Bearer {self.image_api_key}",
+            "Content-Type": "application/json"
+        }
+
+        # workflow的输入格式
+        payload = {
+            "inputs": {
+                "tup": {
+                    "transfer_method": "local_file",
+                    "upload_file_id": file_id,
+                    "type": "image"
+                }
+            },
+            "response_mode": "blocking",
+            "user": user_id
+        }
+
+        # 打印完整请求
+        print("\n" + "=" * 60)
+        print(">>> 图片AI接口请求（Workflow） <<<")
+        print("=" * 60)
+        print(f"URL: {self.image_api_url}")
+        print(f"Headers: {json.dumps(headers, ensure_ascii=False, indent=2)}")
+        print(f"Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}")
+        print("=" * 60 + "\n")
+
+        try:
+            resp = requests.post(
+                self.image_api_url,
+                headers=headers,
+                json=payload,
+                timeout=120
+            )
+            resp.raise_for_status()
+
+            result = resp.json()
+
+            # 打印完整响应
+            print("\n" + "-" * 60)
+            print(">>> 图片AI接口响应 <<<")
+            print("-" * 60)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            print("-" * 60 + "\n")
+
+            # blocking模式直接返回结果
+            outputs = result.get('data', {}).get('outputs', {})
+            # 尝试获取输出文本（根据workflow配置可能是不同的key）
+            full_output = outputs.get('text') or outputs.get('result') or outputs.get('output') or str(outputs)
+
+            return full_output if full_output else "图片解析未返回有效内容"
+
+        except Exception as e:
+            logger.error(f"图片AI调用异常: {e}")
+            return "图片解析服务暂时不可用，请稍后重试"

@@ -255,38 +255,43 @@ class MessageProcessor:
                 self.wechat_api.send_app_message(userid, "❌ 图片上传失败，请重试")
                 return
 
-            # 5. 获取用户上下文
-            user_context = self.user_manager.get_user_context(userid)
-
-            # 6. 构建消息（有关联文字就用关联文字，没有就空）
-            user_message = linked_text if linked_text else ""
-            message_with_context = self.user_manager.format_user_info_for_ai(
-                user_context,
-                user_message
-            ) if user_message else ""
-
-            # 7. 打印发送给AI的消息
+            # 5. 打印图片信息
             print("\n" + "*" * 60)
-            print("*" + " " * 16 + ">>> 发送给AI的图片消息 <<<" + " " * 15 + "*")
+            print("*" + " " * 16 + ">>> 处理图片消息 <<<" + " " * 17 + "*")
             print("*" * 60)
             print(f"图片文件: {filename}")
             print(f"文件ID: {file_id}")
             print(f"关联文字: {linked_text if linked_text else '(无)'}")
-            if message_with_context:
-                print(message_with_context)
             print("*" * 60 + "\n")
 
-            # 8. 调用AI（带图片）
-            files = [{
-                "type": "image",
-                "transfer_method": "local_file",
-                "upload_file_id": file_id
-            }]
-            # 如果没有文字，query传空字符串
-            query = message_with_context if message_with_context else ""
-            ai_reply = self.ai_client.chat(userid, query, files=files)
+            # 6. 调用图片解析接口（workflow），得到图片描述文本
+            image_text = self.ai_client.analyze_image(userid, file_id, linked_text)
 
-            # 9. 打印AI返回的回复
+            print("\n" + "-" * 60)
+            print(">>> 图片解析结果 <<<")
+            print("-" * 60)
+            print(image_text)
+            print("-" * 60 + "\n")
+
+            if not image_text or "服务" in image_text and "不可用" in image_text:
+                self.wechat_api.send_app_message(userid, "❌ 图片解析失败，请重试")
+                return
+
+            # 9. 将图片描述+用户文字一起发给聊天AI
+            # 构建完整消息
+            if linked_text:
+                full_message = f"[图片内容] {image_text}\n[用户问题] {linked_text}"
+            else:
+                full_message = f"[图片内容] {image_text}"
+
+            # 加上用户身份信息
+            user_context = self.user_manager.get_user_context(userid)
+            message_with_context = self.user_manager.format_user_info_for_ai(user_context, full_message)
+
+            # 调用聊天AI
+            ai_reply = self.ai_client.chat(userid, message_with_context)
+
+            # 10. 打印AI返回的回复
             print("\n" + "#" * 60)
             print("#" + " " * 18 + "<<< AI返回的回复 >>>" + " " * 19 + "#")
             print("#" * 60)
