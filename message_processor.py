@@ -239,7 +239,7 @@ class MessageProcessor:
                 logger.info(f"用户意图判断结果: {intent}, userid={userid}")
 
                 if intent == 1:
-                    # 1：同意，调用创建工单接口
+                    # 1：同意，调用创建工单接口，清空上下文
                     self._clear_pending_work_order(userid)
                     success, result = self._submit_work_order(userid, pending_order, content)
 
@@ -249,6 +249,7 @@ class MessageProcessor:
                         self.wechat_api.send_app_message(userid, "工单已生成")
                     else:
                         logger.error(f"工单提交异常: {result}, userid={userid}")
+                    return
 
                 elif intent == 2:
                     # 2：不同意，清空上下文，回复友好消息
@@ -256,15 +257,13 @@ class MessageProcessor:
                     self.ai_client.clear_conversation(userid)
                     logger.info(f"用户不同意生成工单，已清空上下文: {userid}")
                     self.wechat_api.send_app_message(userid, "好的，期待下次为您服务")
+                    return
 
                 else:
-                    # 3：想修改，调用chat-messages接口继续对话
-                    logger.info(f"用户想修改工单信息: {userid}")
-                    # 不清除pending_order，继续正常处理消息
-                    # 这里不return，让代码继续往下走调用chat接口
-
-                if intent in [1, 2]:
-                    return
+                    # 3：想修改，保留会话上下文，清除pending_order，继续调用chat接口
+                    self._clear_pending_work_order(userid)
+                    logger.info(f"用户想修改工单信息，保留上下文继续对话: {userid}")
+                    # 不清除会话上下文，不return，让代码继续往下走调用chat接口
 
             # 1. 检查用户是否已授权（数据库中有手机号）
             is_authorized, user_info = self.user_manager.check_user_authorized(userid)
