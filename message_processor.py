@@ -36,6 +36,9 @@ MESSAGE_LINK_WINDOW = 30
 class MessageProcessor:
     """消息处理器"""
 
+    # 用户无操作超时时间（秒）
+    INACTIVE_TIMEOUT = 500
+
     def __init__(self, wechat_api, ai_client, user_manager, auth_manager):
         self.wechat_api = wechat_api
         self.ai_client = ai_client
@@ -45,6 +48,37 @@ class MessageProcessor:
         self._pending_text = {}
         # 保存待确认的工单数据 {userid: {"data": work_order_dict, "time": timestamp}}
         self._pending_work_orders = {}
+        # 保存用户最后活跃时间 {userid: timestamp}
+        self._last_active_time = {}
+
+    def _check_and_clear_timeout(self, userid):
+        """检查用户是否超时，超时则清除所有上下文"""
+        last_time = self._last_active_time.get(userid)
+        if last_time and (time.time() - last_time > self.INACTIVE_TIMEOUT):
+            # 超过500秒无操作，清除所有上下文
+            self._clear_all_context(userid)
+            logger.info(f"用户 {userid} 超过 {self.INACTIVE_TIMEOUT} 秒无操作，已清除所有上下文")
+            print(f"\n>>> 用户 {userid} 超时，已清除所有上下文 <<<\n")
+            return True
+        return False
+
+    def _update_active_time(self, userid):
+        """更新用户最后活跃时间"""
+        self._last_active_time[userid] = time.time()
+
+    def _clear_all_context(self, userid):
+        """清除用户的所有上下文"""
+        # 清除待确认工单
+        if userid in self._pending_work_orders:
+            del self._pending_work_orders[userid]
+        # 清除待处理文字
+        if userid in self._pending_text:
+            del self._pending_text[userid]
+        # 清除AI会话上下文
+        self.ai_client.clear_conversation(userid)
+        # 清除最后活跃时间
+        if userid in self._last_active_time:
+            del self._last_active_time[userid]
 
     def _parse_ai_response(self, ai_reply):
         """解析AI返回的JSON数据
@@ -220,6 +254,11 @@ class MessageProcessor:
     def _handle_message(self, userid, content):
         """处理单条消息"""
         try:
+            # 检查是否超时，超时则清除所有上下文
+            self._check_and_clear_timeout(userid)
+            # 更新用户最后活跃时间
+            self._update_active_time(userid)
+
             # 检查是否是图片关联消息（#开头）
             if content.startswith("#"):
                 # 保存到pending，等待图片，不立即处理
@@ -282,15 +321,15 @@ class MessageProcessor:
                     return
 
                 else:
-                    # 3：想修改，保留会话上下文，保存之前的工单数据用于合并
+                    # 3：想修改，把已整理的工单数据 + 用户修改内容一起发给AI
                     print("\n" + "*" * 60)
-                    print(">>> 执行: 想修改，保留上下文继续对话 <<<")
+                    print(">>> 执行: 想修改，把工单数据+修改内容发给AI <<<")
                     print("*" * 60 + "\n")
 
                     previous_order = pending_order.copy()  # 保存之前的工单数据用于后续合并
                     self._clear_pending_work_order(userid)
-                    logger.info(f"用户想修改工单信息，保留上下文继续对话: {userid}")
-                    # 不清除会话上下文，不return，让代码继续往下走调用chat接口
+                    logger.info(f"用户想修改工单信息: {userid}")
+                    # 不return，让代码继续往下走调用chat接口
 
             # 1. 检查用户是否已授权（数据库中有手机号）
             is_authorized, user_info = self.user_manager.check_user_authorized(userid)
@@ -308,7 +347,13 @@ class MessageProcessor:
             print(info_display)
 
             # 4. 构建带用户信息的消息给AI
-            message_with_context = self.user_manager.format_user_info_for_ai(user_context, content)
+            # 如果是修改流程（有previous_order），把已整理的工单数据 + 用户修改内容一起发给AI
+            if previous_order:
+                order_json = json.dumps(previous_order, ensure_ascii=False)
+                full_content = f"[当前工单数据] {order_json}\n[用户修改要求] {content}"
+                message_with_context = self.user_manager.format_user_info_for_ai(user_context, full_content)
+            else:
+                message_with_context = self.user_manager.format_user_info_for_ai(user_context, content)
 
             # 5. 发送等待提示
             self.wechat_api.send_app_message(userid, "⏳ 正在处理中，请稍候...")
@@ -377,9 +422,13 @@ class MessageProcessor:
                     # 所有必填字段完整，保存待确认工单并询问用户
                     self._save_pending_work_order(userid, parsed_data)
 
+                    # 工单整理完成后，清除AI会话上下文（但保留工单数据）
+                    self.ai_client.clear_conversation(userid)
+                    logger.info(f"工单整理完成，已清除AI会话上下文: {userid}")
+
                     confirm_msg = self._format_work_order_confirm(parsed_data)
                     print("\n" + "+" * 60)
-                    print(">>> 工单信息完整，等待用户确认 <<<")
+                    print(">>> 工单信息完整，等待用户确认（已清除AI上下文） <<<")
                     print("+" * 60)
                     print(confirm_msg)
                     print("+" * 60 + "\n")
@@ -401,6 +450,11 @@ class MessageProcessor:
     def _handle_file_message(self, userid, msg_type, media_id, original_filename=None):
         """处理文件消息（图片、语音、视频、文件）"""
         try:
+            # 检查是否超时，超时则清除所有上下文
+            self._check_and_clear_timeout(userid)
+            # 更新用户最后活跃时间
+            self._update_active_time(userid)
+
             # 类型名称映射
             type_names = {
                 "image": "图片",
@@ -589,9 +643,13 @@ class MessageProcessor:
                     # 所有必填字段完整，保存待确认工单并询问用户
                     self._save_pending_work_order(userid, parsed_data)
 
+                    # 工单整理完成后，清除AI会话上下文（但保留工单数据）
+                    self.ai_client.clear_conversation(userid)
+                    logger.info(f"工单整理完成，已清除AI会话上下文: {userid}")
+
                     confirm_msg = self._format_work_order_confirm(parsed_data)
                     print("\n" + "+" * 60)
-                    print(">>> 工单信息完整，等待用户确认 <<<")
+                    print(">>> 工单信息完整，等待用户确认（已清除AI上下文） <<<")
                     print("+" * 60)
                     print(confirm_msg)
                     print("+" * 60 + "\n")
