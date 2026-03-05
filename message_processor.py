@@ -236,7 +236,6 @@ class MessageProcessor:
             if pending_order:
                 # 把用户回复传给AI，让大模型判断是否保存工单
                 self._clear_pending_work_order(userid)
-                self.wechat_api.send_app_message(userid, "⏳ 正在处理，请稍候...")
 
                 success, result = self._submit_work_order(userid, pending_order, content)
 
@@ -246,9 +245,10 @@ class MessageProcessor:
                     logger.info(f"工单提交成功，已清空用户会话上下文: {userid}")
                     self.wechat_api.send_app_message(userid, "工单已生成")
                 elif result == "600":
-                    # 600：用户不同意，清空上下文，只打印日志不通知客户
+                    # 600：用户不同意，清空上下文，回复友好消息
                     self.ai_client.clear_conversation(userid)
                     logger.info(f"用户不同意生成工单，已清空上下文: {userid}")
+                    self.wechat_api.send_app_message(userid, "好的，期待下次为您服务")
                 else:
                     # 其他失败情况，打印日志
                     logger.error(f"工单提交异常: {result}, userid={userid}")
