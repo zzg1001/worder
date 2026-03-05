@@ -149,21 +149,20 @@ class MessageProcessor:
         return message
 
     def _format_work_order_confirm(self, data):
-        """格式化工单确认消息"""
-        message = f"分类：{data.get('category', '')}\n"
-        message += f"优先级：{data.get('priority', '')}\n"
-        message += f"联系人：{data.get('contact_name', '')}\n"
-        message += f"部门：{data.get('department', '')}\n"
-        message += f"电话：{data.get('contact_phone', '')}\n"
-        message += f"问题描述：{data.get('problem_desc', '')}"
+        """格式化工单确认消息，所有字段都展示（空的显示空）"""
+        def get_value(key):
+            val = data.get(key, '')
+            return val if val else ''
 
-        # 可选字段
-        if data.get('title'):
-            message = f"标题：{data.get('title')}\n" + message
-        if data.get('impact_scope'):
-            message += f"\n影响范围：{data.get('impact_scope')}"
-        if data.get('tried_solutions'):
-            message += f"\n已尝试方案：{data.get('tried_solutions')}"
+        message = f"标题：{get_value('title')}\n"
+        message += f"分类：{get_value('category')}\n"
+        message += f"优先级：{get_value('priority')}\n"
+        message += f"联系人：{get_value('contact_name')}\n"
+        message += f"部门：{get_value('department')}\n"
+        message += f"电话：{get_value('contact_phone')}\n"
+        message += f"问题描述：{get_value('problem_desc')}\n"
+        message += f"影响范围：{get_value('impact_scope')}\n"
+        message += f"已尝试方案：{get_value('tried_solutions')}"
 
         return message
 
@@ -375,7 +374,7 @@ class MessageProcessor:
             print(ai_reply)
             print("#" * 60 + "\n")
 
-            # 9. 解析AI返回的JSON数据并验证必填字段
+            # 9. 解析AI返回的JSON数据
             is_json, parsed_data = self._parse_ai_response(ai_reply)
 
             if is_json:
@@ -402,41 +401,24 @@ class MessageProcessor:
                     print("~" * 60 + "\n")
                     logger.info(f"合并后的工单数据: {json.dumps(parsed_data, ensure_ascii=False)}")
 
-                # 验证必填字段
-                is_valid, missing_fields = self._validate_work_order(parsed_data)
+                # 不验证字段，直接展示所有字段（空的也展示）并询问用户
+                self._save_pending_work_order(userid, parsed_data)
 
-                if not is_valid:
-                    # 有缺失字段，提示用户补充
-                    missing_msg = self._format_missing_fields_message(missing_fields)
-                    print("\n" + "!" * 60)
-                    print(">>> 缺失字段提示 <<<")
-                    print("!" * 60)
-                    print(missing_msg)
-                    print("!" * 60 + "\n")
-                    # 如果是修改流程且字段不完整，也需要保存已有数据
-                    if previous_order:
-                        self._save_pending_work_order(userid, parsed_data)
-                    upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
-                    self.wechat_api.send_app_message(userid, f"{missing_msg}<a href='{upload_url}'>上传附件</a>")
-                else:
-                    # 所有必填字段完整，保存待确认工单并询问用户
-                    self._save_pending_work_order(userid, parsed_data)
+                # 清除AI会话上下文（但保留工单数据）
+                self.ai_client.clear_conversation(userid)
+                logger.info(f"工单整理完成，已清除AI会话上下文: {userid}")
 
-                    # 工单整理完成后，清除AI会话上下文（但保留工单数据）
-                    self.ai_client.clear_conversation(userid)
-                    logger.info(f"工单整理完成，已清除AI会话上下文: {userid}")
+                confirm_msg = self._format_work_order_confirm(parsed_data)
+                print("\n" + "+" * 60)
+                print(">>> 工单信息展示，等待用户确认 <<<")
+                print("+" * 60)
+                print(confirm_msg)
+                print("+" * 60 + "\n")
 
-                    confirm_msg = self._format_work_order_confirm(parsed_data)
-                    print("\n" + "+" * 60)
-                    print(">>> 工单信息完整，等待用户确认（已清除AI上下文） <<<")
-                    print("+" * 60)
-                    print(confirm_msg)
-                    print("+" * 60 + "\n")
-
-                    # 询问用户是否生成工单（附带上传链接）
-                    upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
-                    ask_msg = f"{confirm_msg}\n是否生成工单？<a href='{upload_url}'>上传附件</a>"
-                    self.wechat_api.send_app_message(userid, ask_msg)
+                # 询问用户是否生成工单（附带上传链接）
+                upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
+                ask_msg = f"{confirm_msg}\n是否生成工单？<a href='{upload_url}'>上传附件</a>"
+                self.wechat_api.send_app_message(userid, ask_msg)
             else:
                 # AI返回的不是JSON格式，直接发送原始回复
                 upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
@@ -619,45 +601,31 @@ class MessageProcessor:
             print(ai_reply)
             print("#" * 60 + "\n")
 
-            # 11. 解析AI返回的JSON数据并验证必填字段
+            # 11. 解析AI返回的JSON数据
             is_json, parsed_data = self._parse_ai_response(ai_reply)
 
             if is_json:
                 # AI返回了JSON格式的工单数据
                 logger.info(f"AI返回JSON数据: {json.dumps(parsed_data, ensure_ascii=False)}")
 
-                # 验证必填字段
-                is_valid, missing_fields = self._validate_work_order(parsed_data)
+                # 不验证字段，直接展示所有字段（空的也展示）并询问用户
+                self._save_pending_work_order(userid, parsed_data)
 
-                if not is_valid:
-                    # 有缺失字段，提示用户补充
-                    missing_msg = self._format_missing_fields_message(missing_fields)
-                    print("\n" + "!" * 60)
-                    print(">>> 缺失字段提示 <<<")
-                    print("!" * 60)
-                    print(missing_msg)
-                    print("!" * 60 + "\n")
-                    upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
-                    self.wechat_api.send_app_message(userid, f"{missing_msg}<a href='{upload_url}'>上传附件</a>")
-                else:
-                    # 所有必填字段完整，保存待确认工单并询问用户
-                    self._save_pending_work_order(userid, parsed_data)
+                # 清除AI会话上下文（但保留工单数据）
+                self.ai_client.clear_conversation(userid)
+                logger.info(f"工单整理完成，已清除AI会话上下文: {userid}")
 
-                    # 工单整理完成后，清除AI会话上下文（但保留工单数据）
-                    self.ai_client.clear_conversation(userid)
-                    logger.info(f"工单整理完成，已清除AI会话上下文: {userid}")
+                confirm_msg = self._format_work_order_confirm(parsed_data)
+                print("\n" + "+" * 60)
+                print(">>> 工单信息展示，等待用户确认 <<<")
+                print("+" * 60)
+                print(confirm_msg)
+                print("+" * 60 + "\n")
 
-                    confirm_msg = self._format_work_order_confirm(parsed_data)
-                    print("\n" + "+" * 60)
-                    print(">>> 工单信息完整，等待用户确认（已清除AI上下文） <<<")
-                    print("+" * 60)
-                    print(confirm_msg)
-                    print("+" * 60 + "\n")
-
-                    # 询问用户是否生成工单（附带上传链接）
-                    upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
-                    ask_msg = f"{confirm_msg}\n是否生成工单？<a href='{upload_url}'>上传附件</a>"
-                    self.wechat_api.send_app_message(userid, ask_msg)
+                # 询问用户是否生成工单（附带上传链接）
+                upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
+                ask_msg = f"{confirm_msg}\n是否生成工单？<a href='{upload_url}'>上传附件</a>"
+                self.wechat_api.send_app_message(userid, ask_msg)
             else:
                 # AI返回的不是JSON格式，直接发送原始回复
                 upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
