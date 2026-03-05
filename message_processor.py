@@ -117,20 +117,19 @@ class MessageProcessor:
 
     def _format_work_order_confirm(self, data):
         """格式化工单确认消息"""
-        message = "工单信息已收集完整：\n\n"
-        message += f"标题：{data.get('title', '')}\n"
+        message = f"标题：{data.get('title', '')}\n"
         message += f"分类：{data.get('category', '')}\n"
         message += f"优先级：{data.get('priority', '')}\n"
         message += f"联系人：{data.get('contact_name', '')}\n"
         message += f"部门：{data.get('department', '')}\n"
         message += f"电话：{data.get('contact_phone', '')}\n"
-        message += f"问题描述：{data.get('problem_desc', '')}\n"
+        message += f"问题描述：{data.get('problem_desc', '')}"
 
         # 可选字段
         if data.get('impact_scope'):
-            message += f"影响范围：{data.get('impact_scope')}\n"
+            message += f"\n影响范围：{data.get('impact_scope')}"
         if data.get('tried_solutions'):
-            message += f"已尝试方案：{data.get('tried_solutions')}\n"
+            message += f"\n已尝试方案：{data.get('tried_solutions')}"
 
         return message
 
@@ -323,8 +322,9 @@ class MessageProcessor:
                     print(confirm_msg)
                     print("+" * 60 + "\n")
 
-                    # 询问用户是否生成工单
-                    ask_msg = f"{confirm_msg}\n\n是否生成工单？"
+                    # 询问用户是否生成工单（附带上传链接）
+                    upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
+                    ask_msg = f"{confirm_msg}\n是否生成工单？<a href='{upload_url}'>上传附件</a>"
                     self.wechat_api.send_app_message(userid, ask_msg)
             else:
                 # AI返回的不是JSON格式，直接发送原始回复
@@ -533,8 +533,9 @@ class MessageProcessor:
                     print(confirm_msg)
                     print("+" * 60 + "\n")
 
-                    # 询问用户是否生成工单
-                    ask_msg = f"{confirm_msg}\n\n是否生成工单？"
+                    # 询问用户是否生成工单（附带上传链接）
+                    upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
+                    ask_msg = f"{confirm_msg}\n是否生成工单？<a href='{upload_url}'>上传附件</a>"
                     self.wechat_api.send_app_message(userid, ask_msg)
             else:
                 # AI返回的不是JSON格式，直接发送原始回复
