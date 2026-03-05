@@ -331,7 +331,7 @@ class AIClient:
             print("-" * 60 + "\n")
 
             outputs = result.get('data', {}).get('outputs', {})
-            intent = outputs.get('intent') or outputs.get('result') or outputs.get('text') or ""
+            intent = outputs.get('decision') or ""
 
             logger.info(f"意图判断返回: {intent}")
 
