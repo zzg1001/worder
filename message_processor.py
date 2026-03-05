@@ -4,6 +4,7 @@ message_processor.py - 消息处理器
 """
 
 import os
+import json
 import logging
 import threading
 import xml.etree.ElementTree as ET
@@ -11,6 +12,20 @@ from datetime import datetime
 import time
 
 logger = logging.getLogger(__name__)
+
+# AI返回的工单JSON必填字段
+REQUIRED_FIELDS = {
+    "title": "问题标题",
+    "category": "问题分类",
+    "priority": "优先级",
+    "contact_name": "联系人姓名",
+    "department": "所属部门",
+    "contact_phone": "联系电话",
+    "problem_desc": "问题描述"
+}
+
+# 可选字段（不需要验证）
+OPTIONAL_FIELDS = ["tried_solutions", "impact_scope"]
 
 # 文件保存目录
 FILE_SAVE_DIR = "/root/ai_work_order/doc"
@@ -29,6 +44,129 @@ class MessageProcessor:
         self.auth_manager = auth_manager
         # 保存用户最近的文字消息 {userid: {"content": "xxx", "time": timestamp}}
         self._pending_text = {}
+
+    def _parse_ai_response(self, ai_reply):
+        """解析AI返回的JSON数据
+
+        Returns:
+            tuple: (is_json, data_or_text)
+                - 如果是有效JSON: (True, dict)
+                - 如果不是JSON: (False, original_text)
+        """
+        try:
+            # 尝试从回复中提取JSON
+            text = ai_reply.strip()
+
+            # 尝试直接解析
+            if text.startswith('{'):
+                data = json.loads(text)
+                return True, data
+
+            # 尝试从markdown代码块中提取
+            if '```json' in text:
+                start = text.find('```json') + 7
+                end = text.find('```', start)
+                if end > start:
+                    json_str = text[start:end].strip()
+                    data = json.loads(json_str)
+                    return True, data
+
+            # 尝试从普通代码块中提取
+            if '```' in text:
+                start = text.find('```') + 3
+                end = text.find('```', start)
+                if end > start:
+                    json_str = text[start:end].strip()
+                    if json_str.startswith('{'):
+                        data = json.loads(json_str)
+                        return True, data
+
+            return False, ai_reply
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON解析失败: {e}")
+            return False, ai_reply
+
+    def _validate_work_order(self, data):
+        """验证工单数据的必填字段
+
+        Returns:
+            tuple: (is_valid, missing_fields)
+                - is_valid: 是否所有必填字段都有值
+                - missing_fields: 缺失的字段列表 [(field_key, field_name), ...]
+        """
+        missing_fields = []
+
+        for field_key, field_name in REQUIRED_FIELDS.items():
+            value = data.get(field_key, "")
+            # 检查字段是否为空（None、空字符串、或只有空白）
+            if not value or (isinstance(value, str) and not value.strip()):
+                missing_fields.append((field_key, field_name))
+
+        return len(missing_fields) == 0, missing_fields
+
+    def _format_missing_fields_message(self, missing_fields):
+        """格式化缺失字段的提示消息"""
+        message = "📝 请补充以下信息：\n\n"
+        for i, (field_key, field_name) in enumerate(missing_fields, 1):
+            message += f"{i}. {field_name}\n"
+        message += "\n请直接回复需要补充的内容，我会继续为您处理。"
+        return message
+
+    def _format_work_order_confirm(self, data):
+        """格式化工单确认消息"""
+        message = "✅ 工单信息已收集完整：\n\n"
+        message += f"📌 标题：{data.get('title', '')}\n"
+        message += f"📂 分类：{data.get('category', '')}\n"
+        message += f"⚡ 优先级：{data.get('priority', '')}\n"
+        message += f"👤 联系人：{data.get('contact_name', '')}\n"
+        message += f"🏢 部门：{data.get('department', '')}\n"
+        message += f"📞 电话：{data.get('contact_phone', '')}\n"
+        message += f"📝 问题描述：{data.get('problem_desc', '')}\n"
+
+        # 可选字段
+        if data.get('impact_scope'):
+            message += f"🎯 影响范围：{data.get('impact_scope')}\n"
+        if data.get('tried_solutions'):
+            message += f"🔧 已尝试方案：{data.get('tried_solutions')}\n"
+
+        return message
+
+    def _submit_work_order(self, userid, work_order_data):
+        """提交工单到另一个AI接口
+
+        TODO: 接口还未开发，待实现
+
+        Args:
+            userid: 用户ID
+            work_order_data: 完整的工单数据字典
+
+        Returns:
+            tuple: (success, result_message)
+        """
+        # TODO: 调用另一个AI接口提交工单
+        # 示例代码（待接口开发后替换）:
+        #
+        # submit_url = "http://xxx.xxx.xxx/api/submit_work_order"
+        # headers = {"Content-Type": "application/json"}
+        # payload = {
+        #     "user_id": userid,
+        #     "work_order": work_order_data
+        # }
+        #
+        # try:
+        #     resp = requests.post(submit_url, headers=headers, json=payload, timeout=30)
+        #     resp.raise_for_status()
+        #     result = resp.json()
+        #     return True, "工单提交成功"
+        # except Exception as e:
+        #     logger.error(f"工单提交失败: {e}")
+        #     return False, "工单提交失败，请稍后重试"
+
+        logger.info(f"[待开发] 工单提交接口调用，用户: {userid}, 数据: {json.dumps(work_order_data, ensure_ascii=False)}")
+
+        # 暂时返回成功，等接口开发后替换
+        return True, "工单已记录（提交接口待开发）"
 
     def process(self, plain_xml):
         """处理消息入口"""
@@ -122,10 +260,50 @@ class MessageProcessor:
             print(ai_reply)
             print("#" * 60 + "\n")
 
-            # 9. 发送回复（附带上传链接，带用户ID）
-            upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
-            reply_with_upload = f"{ai_reply} <a href='{upload_url}'>上传附件</a>"
-            self.wechat_api.send_app_message(userid, reply_with_upload)
+            # 9. 解析AI返回的JSON数据并验证必填字段
+            is_json, parsed_data = self._parse_ai_response(ai_reply)
+
+            if is_json:
+                # AI返回了JSON格式的工单数据
+                logger.info(f"AI返回JSON数据: {json.dumps(parsed_data, ensure_ascii=False)}")
+
+                # 验证必填字段
+                is_valid, missing_fields = self._validate_work_order(parsed_data)
+
+                if not is_valid:
+                    # 有缺失字段，提示用户补充
+                    missing_msg = self._format_missing_fields_message(missing_fields)
+                    print("\n" + "!" * 60)
+                    print(">>> 缺失字段提示 <<<")
+                    print("!" * 60)
+                    print(missing_msg)
+                    print("!" * 60 + "\n")
+                    self.wechat_api.send_app_message(userid, missing_msg)
+                else:
+                    # 所有必填字段完整，显示确认信息
+                    confirm_msg = self._format_work_order_confirm(parsed_data)
+                    print("\n" + "+" * 60)
+                    print(">>> 工单信息完整 <<<")
+                    print("+" * 60)
+                    print(confirm_msg)
+                    print("+" * 60 + "\n")
+
+                    # 调用另一个AI接口提交工单
+                    success, submit_result = self._submit_work_order(userid, parsed_data)
+
+                    if success:
+                        # 发送确认消息（附带上传链接）
+                        upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
+                        reply_with_upload = f"{confirm_msg}\n{submit_result}\n<a href='{upload_url}'>上传附件</a>"
+                        self.wechat_api.send_app_message(userid, reply_with_upload)
+                    else:
+                        # 提交失败，提示用户
+                        self.wechat_api.send_app_message(userid, f"{confirm_msg}\n\n❌ {submit_result}")
+            else:
+                # AI返回的不是JSON格式，直接发送原始回复
+                upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
+                reply_with_upload = f"{ai_reply} <a href='{upload_url}'>上传附件</a>"
+                self.wechat_api.send_app_message(userid, reply_with_upload)
 
         except Exception as e:
             logger.error(f"处理消息异常: {e}")
@@ -298,10 +476,50 @@ class MessageProcessor:
             print(ai_reply)
             print("#" * 60 + "\n")
 
-            # 10. 发送回复（附带上传链接）
-            upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
-            reply_with_upload = f"{ai_reply} <a href='{upload_url}'>上传附件</a>"
-            self.wechat_api.send_app_message(userid, reply_with_upload)
+            # 11. 解析AI返回的JSON数据并验证必填字段
+            is_json, parsed_data = self._parse_ai_response(ai_reply)
+
+            if is_json:
+                # AI返回了JSON格式的工单数据
+                logger.info(f"AI返回JSON数据: {json.dumps(parsed_data, ensure_ascii=False)}")
+
+                # 验证必填字段
+                is_valid, missing_fields = self._validate_work_order(parsed_data)
+
+                if not is_valid:
+                    # 有缺失字段，提示用户补充
+                    missing_msg = self._format_missing_fields_message(missing_fields)
+                    print("\n" + "!" * 60)
+                    print(">>> 缺失字段提示 <<<")
+                    print("!" * 60)
+                    print(missing_msg)
+                    print("!" * 60 + "\n")
+                    self.wechat_api.send_app_message(userid, missing_msg)
+                else:
+                    # 所有必填字段完整，显示确认信息
+                    confirm_msg = self._format_work_order_confirm(parsed_data)
+                    print("\n" + "+" * 60)
+                    print(">>> 工单信息完整 <<<")
+                    print("+" * 60)
+                    print(confirm_msg)
+                    print("+" * 60 + "\n")
+
+                    # 调用另一个AI接口提交工单
+                    success, submit_result = self._submit_work_order(userid, parsed_data)
+
+                    if success:
+                        # 发送确认消息（附带上传链接）
+                        upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
+                        reply_with_upload = f"{confirm_msg}\n{submit_result}\n<a href='{upload_url}'>上传附件</a>"
+                        self.wechat_api.send_app_message(userid, reply_with_upload)
+                    else:
+                        # 提交失败，提示用户
+                        self.wechat_api.send_app_message(userid, f"{confirm_msg}\n\n❌ {submit_result}")
+            else:
+                # AI返回的不是JSON格式，直接发送原始回复
+                upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
+                reply_with_upload = f"{ai_reply} <a href='{upload_url}'>上传附件</a>"
+                self.wechat_api.send_app_message(userid, reply_with_upload)
 
         except Exception as e:
             logger.error(f"处理图片消息异常: {e}")
