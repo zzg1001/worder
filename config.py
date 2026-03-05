@@ -15,7 +15,7 @@ AGENT_ID = "1000012"
 
 # ========== AI接口配置 ==========
 AI_API_URL = "http://47.100.100.139:8028/v1/chat-messages"
-AI_API_KEY = "app-9PcBKF15xLSzND8z25XwVkGe"
+AI_API_KEY = "app-wYllm3x9JhK4qjL9yU95DnJ8"
 
 # ========== 图片AI接口配置（workflow） ==========
 IMAGE_AI_API_URL = "http://47.100.100.139:8028/v1/workflows/run"
