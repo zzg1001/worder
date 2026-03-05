@@ -372,7 +372,8 @@ class AIClient:
             result = resp.json()
 
             outputs = result.get('data', {}).get('outputs', {})
-            intent = outputs.get('decision') or ""
+            # 返回字段是 text，不是 decision
+            intent = outputs.get('text') or ""
 
             # 解析意图
             intent_desc = {1: "同意生成工单", 2: "不同意", 3: "想修改"}
@@ -381,7 +382,7 @@ class AIClient:
             except ValueError:
                 intent_value = 3  # 解析失败默认当作想修改
 
-            _log_response(api_name, result, f"意图={intent_value} ({intent_desc.get(intent_value, '未知')})")
+            _log_response(api_name, result, f"outputs.text={intent}, 意图={intent_value} ({intent_desc.get(intent_value, '未知')})")
             logger.info(f"[{api_name}] 返回 intent={intent_value} ({intent_desc.get(intent_value, '未知')})")
 
             return intent_value
