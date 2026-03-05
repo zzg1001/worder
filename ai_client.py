@@ -254,33 +254,17 @@ class AIClient:
 
             # blocking模式直接返回结果
             outputs = result.get('data', {}).get('outputs', {})
-            # 获取返回的text
-            output_text = outputs.get('text') or outputs.get('result') or outputs.get('output') or ""
+            # 直接获取status_code
+            status_code = outputs.get('status_code')
 
-            logger.info(f"工单提交返回: {output_text}")
+            logger.info(f"工单提交返回 status_code: {status_code}")
 
-            # 解析返回的JSON，获取status_code
-            try:
-                if isinstance(output_text, str):
-                    output_data = json.loads(output_text)
-                else:
-                    output_data = output_text
-
-                status_code = output_data.get('status_code')
-
-                if status_code == 200:
-                    return True, "200"
-                elif status_code == 600:
-                    return False, "600"
-                else:
-                    return False, f"状态码: {status_code}"
-            except json.JSONDecodeError:
-                # 如果不是JSON，直接判断
-                if "200" in str(output_text):
-                    return True, "200"
-                if "600" in str(output_text):
-                    return False, "600"
-                return False, f"返回: {output_text}"
+            if str(status_code) == "200":
+                return True, "200"
+            elif str(status_code) == "600":
+                return False, "600"
+            else:
+                return False, f"状态码: {status_code}"
 
         except Exception as e:
             logger.error(f"工单提交AI调用异常: {e}")
