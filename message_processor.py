@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 # AI返回的工单JSON必填字段
 REQUIRED_FIELDS = {
-    "title": "问题标题",
     "category": "问题分类",
     "priority": "优先级",
     "contact_name": "联系人姓名",
@@ -25,7 +24,7 @@ REQUIRED_FIELDS = {
 }
 
 # 可选字段（不需要验证）
-OPTIONAL_FIELDS = ["tried_solutions", "impact_scope"]
+OPTIONAL_FIELDS = ["title", "tried_solutions", "impact_scope"]
 
 # 文件保存目录
 FILE_SAVE_DIR = "/root/ai_work_order/doc"
@@ -117,8 +116,7 @@ class MessageProcessor:
 
     def _format_work_order_confirm(self, data):
         """格式化工单确认消息"""
-        message = f"标题：{data.get('title', '')}\n"
-        message += f"分类：{data.get('category', '')}\n"
+        message = f"分类：{data.get('category', '')}\n"
         message += f"优先级：{data.get('priority', '')}\n"
         message += f"联系人：{data.get('contact_name', '')}\n"
         message += f"部门：{data.get('department', '')}\n"
@@ -126,6 +124,8 @@ class MessageProcessor:
         message += f"问题描述：{data.get('problem_desc', '')}"
 
         # 可选字段
+        if data.get('title'):
+            message = f"标题：{data.get('title')}\n" + message
         if data.get('impact_scope'):
             message += f"\n影响范围：{data.get('impact_scope')}"
         if data.get('tried_solutions'):
@@ -344,7 +344,8 @@ class MessageProcessor:
                     print("!" * 60)
                     print(missing_msg)
                     print("!" * 60 + "\n")
-                    self.wechat_api.send_app_message(userid, missing_msg)
+                    upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
+                    self.wechat_api.send_app_message(userid, f"{missing_msg}<a href='{upload_url}'>上传附件</a>")
                 else:
                     # 所有必填字段完整，保存待确认工单并询问用户
                     self._save_pending_work_order(userid, parsed_data)
@@ -363,7 +364,7 @@ class MessageProcessor:
             else:
                 # AI返回的不是JSON格式，直接发送原始回复
                 upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
-                reply_with_upload = f"{ai_reply} <a href='{upload_url}'>上传附件</a>"
+                reply_with_upload = f"{ai_reply}<a href='{upload_url}'>上传附件</a>"
                 self.wechat_api.send_app_message(userid, reply_with_upload)
 
         except Exception as e:
@@ -555,7 +556,8 @@ class MessageProcessor:
                     print("!" * 60)
                     print(missing_msg)
                     print("!" * 60 + "\n")
-                    self.wechat_api.send_app_message(userid, missing_msg)
+                    upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
+                    self.wechat_api.send_app_message(userid, f"{missing_msg}<a href='{upload_url}'>上传附件</a>")
                 else:
                     # 所有必填字段完整，保存待确认工单并询问用户
                     self._save_pending_work_order(userid, parsed_data)
@@ -574,7 +576,7 @@ class MessageProcessor:
             else:
                 # AI返回的不是JSON格式，直接发送原始回复
                 upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
-                reply_with_upload = f"{ai_reply} <a href='{upload_url}'>上传附件</a>"
+                reply_with_upload = f"{ai_reply}<a href='{upload_url}'>上传附件</a>"
                 self.wechat_api.send_app_message(userid, reply_with_upload)
 
         except Exception as e:
