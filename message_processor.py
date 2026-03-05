@@ -242,18 +242,17 @@ class MessageProcessor:
                 success, result = self._submit_work_order(userid, pending_order, content)
 
                 if success:
-                    # 清空会话上下文
+                    # 200：成功，清空会话上下文，告诉客户
                     self.ai_client.clear_conversation(userid)
                     logger.info(f"工单提交成功，已清空用户会话上下文: {userid}")
                     self.wechat_api.send_app_message(userid, "工单已生成")
                 elif result == "600":
-                    # 用户取消，清空上下文
+                    # 600：用户不同意，清空上下文，只打印日志不通知客户
                     self.ai_client.clear_conversation(userid)
-                    logger.info(f"用户取消工单，已清空用户会话上下文: {userid}")
-                    self.wechat_api.send_app_message(userid, "已取消，工单未保存")
+                    logger.info(f"用户不同意生成工单，已清空上下文: {userid}")
                 else:
-                    # 其他失败情况
-                    self.wechat_api.send_app_message(userid, result)
+                    # 其他失败情况，打印日志
+                    logger.error(f"工单提交异常: {result}, userid={userid}")
                 return
 
             # 1. 检查用户是否已授权（数据库中有手机号）
