@@ -234,25 +234,37 @@ class MessageProcessor:
             # 检查是否有待确认的工单
             pending_order = self._get_pending_work_order(userid)
             if pending_order:
-                # 把用户回复传给AI，让大模型判断是否保存工单
-                self._clear_pending_work_order(userid)
+                # 先调用意图判断接口
+                intent = self.ai_client.check_intent(userid, content)
+                logger.info(f"用户意图判断结果: {intent}, userid={userid}")
 
-                success, result = self._submit_work_order(userid, pending_order, content)
+                if intent == 1:
+                    # 1：同意，调用创建工单接口
+                    self._clear_pending_work_order(userid)
+                    success, result = self._submit_work_order(userid, pending_order, content)
 
-                if success:
-                    # 200：成功，清空会话上下文，告诉客户
-                    self.ai_client.clear_conversation(userid)
-                    logger.info(f"工单提交成功，已清空用户会话上下文: {userid}")
-                    self.wechat_api.send_app_message(userid, "工单已生成")
-                elif result == "600":
-                    # 600：用户不同意，清空上下文，回复友好消息
+                    if success:
+                        self.ai_client.clear_conversation(userid)
+                        logger.info(f"工单提交成功，已清空用户会话上下文: {userid}")
+                        self.wechat_api.send_app_message(userid, "工单已生成")
+                    else:
+                        logger.error(f"工单提交异常: {result}, userid={userid}")
+
+                elif intent == 2:
+                    # 2：不同意，清空上下文，回复友好消息
+                    self._clear_pending_work_order(userid)
                     self.ai_client.clear_conversation(userid)
                     logger.info(f"用户不同意生成工单，已清空上下文: {userid}")
                     self.wechat_api.send_app_message(userid, "好的，期待下次为您服务")
+
                 else:
-                    # 其他失败情况，打印日志
-                    logger.error(f"工单提交异常: {result}, userid={userid}")
-                return
+                    # 3：想修改，调用chat-messages接口继续对话
+                    logger.info(f"用户想修改工单信息: {userid}")
+                    # 不清除pending_order，继续正常处理消息
+                    # 这里不return，让代码继续往下走调用chat接口
+
+                if intent in [1, 2]:
+                    return
 
             # 1. 检查用户是否已授权（数据库中有手机号）
             is_authorized, user_info = self.user_manager.check_user_authorized(userid)

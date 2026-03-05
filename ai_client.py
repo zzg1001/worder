@@ -15,7 +15,8 @@ class AIClient:
     """AI服务客户端"""
 
     def __init__(self, api_url, api_key, image_api_url=None, image_api_key=None,
-                 work_order_api_url=None, work_order_api_key=None):
+                 work_order_api_url=None, work_order_api_key=None,
+                 intent_api_url=None, intent_api_key=None):
         self.api_url = api_url
         self.api_key = api_key
         self._conversation_ids = {}
@@ -27,6 +28,9 @@ class AIClient:
         # 工单提交AI接口配置
         self.work_order_api_url = work_order_api_url
         self.work_order_api_key = work_order_api_key
+        # 意图判断AI接口配置
+        self.intent_api_url = intent_api_url
+        self.intent_api_key = intent_api_key
 
     def upload_image(self, image_data, filename, user_id):
         """上传图片到Dify，返回file_id"""
@@ -275,3 +279,71 @@ class AIClient:
         if user_id in self._conversation_ids:
             del self._conversation_ids[user_id]
             logger.info(f"已清空用户会话上下文: {user_id}")
+
+    def check_intent(self, user_id, query):
+        """调用意图判断workflow接口
+
+        Args:
+            user_id: 用户ID
+            query: 用户回复内容
+
+        Returns:
+            int: 1=同意生成工单, 2=不同意, 3=想修改
+        """
+        if not self.intent_api_url or not self.intent_api_key:
+            logger.error("意图判断AI接口未配置")
+            return 3  # 默认当作想修改
+
+        headers = {
+            "Authorization": f"Bearer {self.intent_api_key}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "inputs": {
+                "query": query
+            },
+            "response_mode": "blocking",
+            "user": user_id
+        }
+
+        # 打印完整请求
+        print("\n" + "=" * 60)
+        print(">>> 意图判断AI接口请求（Workflow） <<<")
+        print("=" * 60)
+        print(f"URL: {self.intent_api_url}")
+        print(f"Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}")
+        print("=" * 60 + "\n")
+
+        try:
+            resp = requests.post(
+                self.intent_api_url,
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            resp.raise_for_status()
+
+            result = resp.json()
+
+            # 打印完整响应
+            print("\n" + "-" * 60)
+            print(">>> 意图判断AI接口响应 <<<")
+            print("-" * 60)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            print("-" * 60 + "\n")
+
+            outputs = result.get('data', {}).get('outputs', {})
+            intent = outputs.get('intent') or outputs.get('result') or outputs.get('text') or ""
+
+            logger.info(f"意图判断返回: {intent}")
+
+            # 返回1/2/3
+            try:
+                return int(str(intent).strip())
+            except ValueError:
+                return 3  # 解析失败默认当作想修改
+
+        except Exception as e:
+            logger.error(f"意图判断AI调用异常: {e}")
+            return 3  # 异常默认当作想修改
