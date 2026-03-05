@@ -281,7 +281,7 @@ class MessageProcessor:
                 print("\n" + "=" * 60)
                 print(">>> 意图判断结果 <<<")
                 print("=" * 60)
-                intent_desc = {1: "同意生成工单", 2: "不同意", 3: "想修改"}
+                intent_desc = {1: "同意生成工单", 2: "不同意", 3: "想修改", 4: "重新开始"}
                 print(f"用户回复: {content}")
                 print(f"判断结果: {intent} - {intent_desc.get(intent, '未知')}")
                 print("=" * 60 + "\n")
@@ -305,6 +305,7 @@ class MessageProcessor:
                     else:
                         print(f">>> 工单创建失败: {result} <<<")
                         logger.error(f"工单提交异常: {result}, userid={userid}")
+                        self.wechat_api.send_app_message(userid, f"工单创建失败: {result}")
                     return
 
                 elif intent == 2:
@@ -319,7 +320,18 @@ class MessageProcessor:
                     self.wechat_api.send_app_message(userid, "好的，期待下次为您服务")
                     return
 
-                else:
+                elif intent == 4:
+                    # 4：重新开始，清除所有缓存和上下文
+                    print("\n" + "*" * 60)
+                    print(">>> 执行: 重新开始，清除所有上下文 <<<")
+                    print("*" * 60 + "\n")
+
+                    self._clear_all_context(userid)
+                    logger.info(f"用户选择重新开始，已清除所有上下文: {userid}")
+                    self.wechat_api.send_app_message(userid, "已为您清除之前的记录，请重新描述您的问题，我将为您重新处理~")
+                    return
+
+                elif intent == 3:
                     # 3：想修改，把已整理的工单数据 + 用户修改内容一起发给AI
                     print("\n" + "*" * 60)
                     print(">>> 执行: 想修改，把工单数据+修改内容发给AI <<<")
@@ -329,6 +341,16 @@ class MessageProcessor:
                     self._clear_pending_work_order(userid)
                     logger.info(f"用户想修改工单信息: {userid}")
                     # 不return，让代码继续往下走调用chat接口
+
+                else:
+                    # 其他未知意图，当作想修改处理
+                    print("\n" + "*" * 60)
+                    print(f">>> 执行: 未知意图({intent})，当作修改处理 <<<")
+                    print("*" * 60 + "\n")
+
+                    previous_order = pending_order.copy()
+                    self._clear_pending_work_order(userid)
+                    logger.info(f"未知意图({intent})，当作修改处理: {userid}")
 
             # 1. 检查用户是否已授权（数据库中有手机号）
             is_authorized, user_info = self.user_manager.check_user_authorized(userid)

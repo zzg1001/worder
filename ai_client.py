@@ -201,7 +201,14 @@ class AIClient:
 
             _log_api(api_name, self.work_order_api_url, payload, result)
 
-            outputs = result.get('data', {}).get('outputs', {})
+            data = result.get('data', {})
+
+            # 先检查workflow是否执行成功
+            if data.get('status') == 'failed':
+                error_msg = data.get('error', '未知错误')
+                return False, f"workflow失败: {error_msg}"
+
+            outputs = data.get('outputs', {})
             status_code = outputs.get('status_code')
 
             if str(status_code) == "200":
