@@ -210,18 +210,13 @@ class AIClient:
             "Content-Type": "application/json"
         }
 
-        # workflow的输入格式 - 将工单数据作为inputs传入
+        # 将工单数据转为JSON字符串
+        text_content = json.dumps(work_order_data, ensure_ascii=False)
+
+        # workflow的输入格式 - 传入text参数
         payload = {
             "inputs": {
-                "title": work_order_data.get("title", ""),
-                "category": work_order_data.get("category", ""),
-                "priority": work_order_data.get("priority", ""),
-                "contact_name": work_order_data.get("contact_name", ""),
-                "department": work_order_data.get("department", ""),
-                "contact_phone": work_order_data.get("contact_phone", ""),
-                "problem_desc": work_order_data.get("problem_desc", ""),
-                "impact_scope": work_order_data.get("impact_scope", ""),
-                "tried_solutions": work_order_data.get("tried_solutions", "")
+                "text": text_content
             },
             "response_mode": "blocking",
             "user": user_id
