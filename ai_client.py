@@ -298,7 +298,7 @@ class AIClient:
 
         payload = {
             "inputs": {
-                "query": query
+                "decision": query
             },
             "response_mode": "blocking",
             "user": user_id
