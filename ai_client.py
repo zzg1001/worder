@@ -191,12 +191,13 @@ class AIClient:
             logger.error(f"图片AI调用异常: {e}")
             return "图片解析服务暂时不可用，请稍后重试"
 
-    def submit_work_order(self, user_id, work_order_data):
+    def submit_work_order(self, user_id, work_order_data, query):
         """调用工单提交workflow接口
 
         Args:
             user_id: 用户ID
             work_order_data: 工单数据字典
+            query: 用户回复内容，让大模型判断是否保存
 
         Returns:
             tuple: (success, result_message)
@@ -213,9 +214,10 @@ class AIClient:
         # 将工单数据转为JSON字符串
         text_content = json.dumps(work_order_data, ensure_ascii=False)
 
-        # workflow的输入格式 - 传入text参数
+        # workflow的输入格式 - query是用户回复，text是工单数据
         payload = {
             "inputs": {
+                "query": query,
                 "text": text_content
             },
             "response_mode": "blocking",
@@ -251,16 +253,33 @@ class AIClient:
 
             # blocking模式直接返回结果
             outputs = result.get('data', {}).get('outputs', {})
-            # 获取返回的text（状态码）
-            status_code = outputs.get('text') or outputs.get('result') or outputs.get('output') or ""
+            # 获取返回的text
+            output_text = outputs.get('text') or outputs.get('result') or outputs.get('output') or ""
 
-            logger.info(f"工单提交返回状态码: {status_code}")
+            logger.info(f"工单提交返回: {output_text}")
 
-            # 判断状态码是否为200（成功）
-            if str(status_code).strip() == "200":
-                return True, status_code
-            else:
-                return False, f"状态码: {status_code}"
+            # 解析返回的JSON，获取status_code
+            try:
+                if isinstance(output_text, str):
+                    output_data = json.loads(output_text)
+                else:
+                    output_data = output_text
+
+                status_code = output_data.get('status_code')
+
+                if status_code == 200:
+                    return True, "200"
+                elif status_code == 600:
+                    return False, "600"
+                else:
+                    return False, f"状态码: {status_code}"
+            except json.JSONDecodeError:
+                # 如果不是JSON，直接判断
+                if "200" in str(output_text):
+                    return True, "200"
+                if "600" in str(output_text):
+                    return False, "600"
+                return False, f"返回: {output_text}"
 
         except Exception as e:
             logger.error(f"工单提交AI调用异常: {e}")

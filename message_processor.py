@@ -109,7 +109,7 @@ class MessageProcessor:
 
     def _format_missing_fields_message(self, missing_fields):
         """格式化缺失字段的提示消息"""
-        message = "📝 请补充以下信息：\n\n"
+        message = "请补充以下信息：\n\n"
         for i, (field_key, field_name) in enumerate(missing_fields, 1):
             message += f"{i}. {field_name}\n"
         message += "\n请直接回复需要补充的内容，我会继续为您处理。"
@@ -117,20 +117,20 @@ class MessageProcessor:
 
     def _format_work_order_confirm(self, data):
         """格式化工单确认消息"""
-        message = "✅ 工单信息已收集完整：\n\n"
-        message += f"📌 标题：{data.get('title', '')}\n"
-        message += f"📂 分类：{data.get('category', '')}\n"
-        message += f"⚡ 优先级：{data.get('priority', '')}\n"
-        message += f"👤 联系人：{data.get('contact_name', '')}\n"
-        message += f"🏢 部门：{data.get('department', '')}\n"
-        message += f"📞 电话：{data.get('contact_phone', '')}\n"
-        message += f"📝 问题描述：{data.get('problem_desc', '')}\n"
+        message = "工单信息已收集完整：\n\n"
+        message += f"标题：{data.get('title', '')}\n"
+        message += f"分类：{data.get('category', '')}\n"
+        message += f"优先级：{data.get('priority', '')}\n"
+        message += f"联系人：{data.get('contact_name', '')}\n"
+        message += f"部门：{data.get('department', '')}\n"
+        message += f"电话：{data.get('contact_phone', '')}\n"
+        message += f"问题描述：{data.get('problem_desc', '')}\n"
 
         # 可选字段
         if data.get('impact_scope'):
-            message += f"🎯 影响范围：{data.get('impact_scope')}\n"
+            message += f"影响范围：{data.get('impact_scope')}\n"
         if data.get('tried_solutions'):
-            message += f"🔧 已尝试方案：{data.get('tried_solutions')}\n"
+            message += f"已尝试方案：{data.get('tried_solutions')}\n"
 
         return message
 
@@ -160,32 +160,21 @@ class MessageProcessor:
         if userid in self._pending_work_orders:
             del self._pending_work_orders[userid]
 
-    def _is_confirm_message(self, content):
-        """判断是否是确认消息"""
-        confirm_keywords = ["是", "确认", "好", "可以", "同意", "提交", "生成", "yes", "ok", "确定"]
-        content_lower = content.lower().strip()
-        return any(keyword in content_lower for keyword in confirm_keywords)
-
-    def _is_cancel_message(self, content):
-        """判断是否是取消消息"""
-        cancel_keywords = ["否", "不", "取消", "算了", "no", "cancel", "不要", "不用"]
-        content_lower = content.lower().strip()
-        return any(keyword in content_lower for keyword in cancel_keywords)
-
-    def _submit_work_order(self, userid, work_order_data):
+    def _submit_work_order(self, userid, work_order_data, query):
         """提交工单到AI workflow接口
 
         Args:
             userid: 用户ID
             work_order_data: 完整的工单数据字典
+            query: 用户回复内容
 
         Returns:
             tuple: (success, result_message)
         """
-        logger.info(f"提交工单: userid={userid}, 数据: {json.dumps(work_order_data, ensure_ascii=False)}")
+        logger.info(f"提交工单: userid={userid}, query={query}, 数据: {json.dumps(work_order_data, ensure_ascii=False)}")
 
-        # 调用AI workflow接口
-        success, result = self.ai_client.submit_work_order(userid, work_order_data)
+        # 调用AI workflow接口，让大模型判断是否保存
+        success, result = self.ai_client.submit_work_order(userid, work_order_data, query)
 
         return success, result
 
@@ -246,28 +235,26 @@ class MessageProcessor:
             # 检查是否有待确认的工单
             pending_order = self._get_pending_work_order(userid)
             if pending_order:
-                if self._is_confirm_message(content):
-                    # 用户确认生成工单
-                    self._clear_pending_work_order(userid)
-                    self.wechat_api.send_app_message(userid, "⏳ 正在生成工单，请稍候...")
+                # 把用户回复传给AI，让大模型判断是否保存工单
+                self._clear_pending_work_order(userid)
+                self.wechat_api.send_app_message(userid, "⏳ 正在处理，请稍候...")
 
-                    success, result = self._submit_work_order(userid, pending_order)
+                success, result = self._submit_work_order(userid, pending_order, content)
 
-                    if success:
-                        # 清空会话上下文
-                        self.ai_client.clear_conversation(userid)
-                        logger.info(f"工单提交成功，已清空用户会话上下文: {userid}")
-                        self.wechat_api.send_app_message(userid, "工单已生成")
-                    else:
-                        self.wechat_api.send_app_message(userid, f"❌ 工单生成失败：{result}\n\n请稍后重试或联系管理员。")
-                    return
-
-                elif self._is_cancel_message(content):
-                    # 用户取消
-                    self._clear_pending_work_order(userid)
-                    self.wechat_api.send_app_message(userid, "已取消工单生成。如需帮助，请继续描述您的问题。")
-                    return
-                # 如果既不是确认也不是取消，继续正常处理消息（可能是用户要修改信息）
+                if success:
+                    # 清空会话上下文
+                    self.ai_client.clear_conversation(userid)
+                    logger.info(f"工单提交成功，已清空用户会话上下文: {userid}")
+                    self.wechat_api.send_app_message(userid, "工单已生成")
+                elif result == "600":
+                    # 用户取消，清空上下文
+                    self.ai_client.clear_conversation(userid)
+                    logger.info(f"用户取消工单，已清空用户会话上下文: {userid}")
+                    self.wechat_api.send_app_message(userid, "已取消，工单未保存")
+                else:
+                    # 其他失败情况
+                    self.wechat_api.send_app_message(userid, result)
+                return
 
             # 1. 检查用户是否已授权（数据库中有手机号）
             is_authorized, user_info = self.user_manager.check_user_authorized(userid)
@@ -338,7 +325,7 @@ class MessageProcessor:
                     print("+" * 60 + "\n")
 
                     # 询问用户是否生成工单
-                    ask_msg = f"{confirm_msg}\n\n❓ 请确认以上信息是否正确，是否要生成工单？\n回复【是】或【确认】生成工单\n回复【否】或【取消】取消操作"
+                    ask_msg = f"{confirm_msg}\n\n是否生成工单？"
                     self.wechat_api.send_app_message(userid, ask_msg)
             else:
                 # AI返回的不是JSON格式，直接发送原始回复
@@ -368,7 +355,7 @@ class MessageProcessor:
             file_content, filename = self.wechat_api.download_media(media_id)
 
             if not file_content:
-                self.wechat_api.send_app_message(userid, f"❌ {type_name}下载失败，请重试")
+                self.wechat_api.send_app_message(userid, f"{type_name}下载失败，请重试")
                 return
 
             # 使用原始文件名（如果有）
@@ -401,12 +388,12 @@ class MessageProcessor:
             # 通知用户
             self.wechat_api.send_app_message(
                 userid,
-                f"✅ {type_name}已接收\n📁 文件名: {filename}\n💾 大小: {len(file_content) / 1024:.1f} KB"
+                f"{type_name}已接收\n文件名: {filename}\n大小: {len(file_content) / 1024:.1f} KB"
             )
 
         except Exception as e:
             logger.error(f"处理{msg_type}消息异常: {e}")
-            self.wechat_api.send_app_message(userid, "❌ 文件处理失败，请重试")
+            self.wechat_api.send_app_message(userid, "文件处理失败，请重试")
 
     def _get_image_filename(self, original_filename):
         """处理图片文件名，避免乱码"""
@@ -471,7 +458,7 @@ class MessageProcessor:
             # 4. 上传图片到AI
             file_id = self.ai_client.upload_image(image_data, filename, userid)
             if not file_id:
-                self.wechat_api.send_app_message(userid, "❌ 图片上传失败，请重试")
+                self.wechat_api.send_app_message(userid, "图片上传失败，请重试")
                 return
 
             # 5. 打印图片信息
@@ -493,7 +480,7 @@ class MessageProcessor:
             print("-" * 60 + "\n")
 
             if not image_text or "服务" in image_text and "不可用" in image_text:
-                self.wechat_api.send_app_message(userid, "❌ 图片解析失败，请重试")
+                self.wechat_api.send_app_message(userid, "图片解析失败，请重试")
                 return
 
             # 9. 将图片描述+用户文字一起发给聊天AI
@@ -548,7 +535,7 @@ class MessageProcessor:
                     print("+" * 60 + "\n")
 
                     # 询问用户是否生成工单
-                    ask_msg = f"{confirm_msg}\n\n❓ 请确认以上信息是否正确，是否要生成工单？\n回复【是】或【确认】生成工单\n回复【否】或【取消】取消操作"
+                    ask_msg = f"{confirm_msg}\n\n是否生成工单？"
                     self.wechat_api.send_app_message(userid, ask_msg)
             else:
                 # AI返回的不是JSON格式，直接发送原始回复
@@ -558,7 +545,7 @@ class MessageProcessor:
 
         except Exception as e:
             logger.error(f"处理图片消息异常: {e}")
-            self.wechat_api.send_app_message(userid, "❌ 图片处理失败，请重试")
+            self.wechat_api.send_app_message(userid, "图片处理失败，请重试")
 
     def _send_auth_card(self, userid, original_message=None):
         """发送授权卡片，并保存用户原始消息"""

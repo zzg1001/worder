@@ -548,7 +548,7 @@ def upload_file():
         # 发送消息通知用户
         if userid:
             size_str = f"{file_size / 1024:.1f}KB" if file_size < 1024 * 1024 else f"{file_size / 1024 / 1024:.1f}MB"
-            wechat_api.send_app_message(userid, f"✅ 文件上传成功\n📄 {original_name}\n💾 大小: {size_str}")
+            wechat_api.send_app_message(userid, f"文件上传成功\n文件名: {original_name}\n大小: {size_str}")
 
         return jsonify({
             "success": True,
