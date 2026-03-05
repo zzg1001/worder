@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 class AIClient:
     """AI服务客户端"""
 
-    def __init__(self, api_url, api_key, image_api_url=None, image_api_key=None):
+    def __init__(self, api_url, api_key, image_api_url=None, image_api_key=None,
+                 work_order_api_url=None, work_order_api_key=None):
         self.api_url = api_url
         self.api_key = api_key
         self._conversation_ids = {}
@@ -23,6 +24,9 @@ class AIClient:
         # 图片AI接口配置
         self.image_api_url = image_api_url
         self.image_api_key = image_api_key
+        # 工单提交AI接口配置
+        self.work_order_api_url = work_order_api_url
+        self.work_order_api_key = work_order_api_key
 
     def upload_image(self, image_data, filename, user_id):
         """上传图片到Dify，返回file_id"""
@@ -186,3 +190,89 @@ class AIClient:
         except Exception as e:
             logger.error(f"图片AI调用异常: {e}")
             return "图片解析服务暂时不可用，请稍后重试"
+
+    def submit_work_order(self, user_id, work_order_data):
+        """调用工单提交workflow接口
+
+        Args:
+            user_id: 用户ID
+            work_order_data: 工单数据字典
+
+        Returns:
+            tuple: (success, result_message)
+        """
+        if not self.work_order_api_url or not self.work_order_api_key:
+            logger.error("工单提交AI接口未配置")
+            return False, "工单提交服务未配置"
+
+        headers = {
+            "Authorization": f"Bearer {self.work_order_api_key}",
+            "Content-Type": "application/json"
+        }
+
+        # workflow的输入格式 - 将工单数据作为inputs传入
+        payload = {
+            "inputs": {
+                "title": work_order_data.get("title", ""),
+                "category": work_order_data.get("category", ""),
+                "priority": work_order_data.get("priority", ""),
+                "contact_name": work_order_data.get("contact_name", ""),
+                "department": work_order_data.get("department", ""),
+                "contact_phone": work_order_data.get("contact_phone", ""),
+                "problem_desc": work_order_data.get("problem_desc", ""),
+                "impact_scope": work_order_data.get("impact_scope", ""),
+                "tried_solutions": work_order_data.get("tried_solutions", "")
+            },
+            "response_mode": "blocking",
+            "user": user_id
+        }
+
+        # 打印完整请求
+        print("\n" + "=" * 60)
+        print(">>> 工单提交AI接口请求（Workflow） <<<")
+        print("=" * 60)
+        print(f"URL: {self.work_order_api_url}")
+        print(f"Headers: {json.dumps(headers, ensure_ascii=False, indent=2)}")
+        print(f"Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}")
+        print("=" * 60 + "\n")
+
+        try:
+            resp = requests.post(
+                self.work_order_api_url,
+                headers=headers,
+                json=payload,
+                timeout=120
+            )
+            resp.raise_for_status()
+
+            result = resp.json()
+
+            # 打印完整响应
+            print("\n" + "-" * 60)
+            print(">>> 工单提交AI接口响应 <<<")
+            print("-" * 60)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            print("-" * 60 + "\n")
+
+            # blocking模式直接返回结果
+            outputs = result.get('data', {}).get('outputs', {})
+            # 获取返回的text（状态码）
+            status_code = outputs.get('text') or outputs.get('result') or outputs.get('output') or ""
+
+            logger.info(f"工单提交返回状态码: {status_code}")
+
+            # 判断状态码是否为200（成功）
+            if str(status_code).strip() == "200":
+                return True, status_code
+            else:
+                return False, f"状态码: {status_code}"
+
+        except Exception as e:
+            logger.error(f"工单提交AI调用异常: {e}")
+            return False, f"工单提交失败: {str(e)}"
+
+    def clear_conversation(self, user_id):
+        """清空用户的会话上下文"""
+        if user_id in self._conversation_ids:
+            del self._conversation_ids[user_id]
+            logger.info(f"已清空用户会话上下文: {user_id}")

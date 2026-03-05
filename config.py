@@ -21,6 +21,10 @@ AI_API_KEY = "app-wYllm3x9JhK4qjL9yU95DnJ8"
 IMAGE_AI_API_URL = "http://47.100.100.139:8028/v1/workflows/run"
 IMAGE_AI_API_KEY = "app-KPd1NBWxgrF1Yorx3wqk2lNm"
 
+# ========== 工单提交AI接口配置（workflow） ==========
+WORK_ORDER_API_URL = "http://47.100.100.139:8028/v1/workflows/run"
+WORK_ORDER_API_KEY = "app-gk5gUlA1vdPSwDM0DuRz7O4E"
+
 # ========== 服务端口配置 ==========
 MAIN_PORT = 8091
 OAUTH_PORT = 8092

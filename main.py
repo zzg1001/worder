@@ -16,6 +16,7 @@ from flask import Flask, request, make_response, jsonify
 from config import (
     CORP_ID, CORP_SECRET, CONTACTS_SECRET, TOKEN, ENCODING_AES_KEY, AGENT_ID,
     AI_API_URL, AI_API_KEY, IMAGE_AI_API_URL, IMAGE_AI_API_KEY,
+    WORK_ORDER_API_URL, WORK_ORDER_API_KEY,
     OAUTH_SIGN_KEY, OAUTH_REDIRECT_URI,
     MAIN_PORT, OAUTH_PORT, DB_CONFIG
 )
@@ -41,7 +42,8 @@ db_manager = DatabaseManager(DB_CONFIG)
 wechat_api = WeChatAPI(CORP_ID, CORP_SECRET, AGENT_ID, CONTACTS_SECRET)
 user_manager = UserManager(wechat_api, db_manager)
 auth_manager = AuthManager(OAUTH_SIGN_KEY, OAUTH_REDIRECT_URI, AGENT_ID, CORP_ID)
-ai_client = AIClient(AI_API_URL, AI_API_KEY, IMAGE_AI_API_URL, IMAGE_AI_API_KEY)
+ai_client = AIClient(AI_API_URL, AI_API_KEY, IMAGE_AI_API_URL, IMAGE_AI_API_KEY,
+                     WORK_ORDER_API_URL, WORK_ORDER_API_KEY)
 
 # ========== 主服务（8091） ==========
 main_app = Flask('main_app')

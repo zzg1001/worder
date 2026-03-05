@@ -44,6 +44,8 @@ class MessageProcessor:
         self.auth_manager = auth_manager
         # 保存用户最近的文字消息 {userid: {"content": "xxx", "time": timestamp}}
         self._pending_text = {}
+        # 保存待确认的工单数据 {userid: {"data": work_order_dict, "time": timestamp}}
+        self._pending_work_orders = {}
 
     def _parse_ai_response(self, ai_reply):
         """解析AI返回的JSON数据
@@ -132,10 +134,46 @@ class MessageProcessor:
 
         return message
 
-    def _submit_work_order(self, userid, work_order_data):
-        """提交工单到另一个AI接口
+    def _save_pending_work_order(self, userid, work_order_data):
+        """保存待确认的工单数据"""
+        self._pending_work_orders[userid] = {
+            "data": work_order_data,
+            "time": time.time()
+        }
+        logger.info(f"保存待确认工单: userid={userid}")
 
-        TODO: 接口还未开发，待实现
+    def _get_pending_work_order(self, userid):
+        """获取用户待确认的工单数据（5分钟有效期）"""
+        pending = self._pending_work_orders.get(userid)
+        if pending:
+            # 检查是否在5分钟内
+            if time.time() - pending["time"] <= 300:
+                return pending["data"]
+            else:
+                # 过期，清除
+                del self._pending_work_orders[userid]
+                logger.info(f"待确认工单已过期: userid={userid}")
+        return None
+
+    def _clear_pending_work_order(self, userid):
+        """清除用户待确认的工单数据"""
+        if userid in self._pending_work_orders:
+            del self._pending_work_orders[userid]
+
+    def _is_confirm_message(self, content):
+        """判断是否是确认消息"""
+        confirm_keywords = ["是", "确认", "好", "可以", "同意", "提交", "生成", "yes", "ok", "确定"]
+        content_lower = content.lower().strip()
+        return any(keyword in content_lower for keyword in confirm_keywords)
+
+    def _is_cancel_message(self, content):
+        """判断是否是取消消息"""
+        cancel_keywords = ["否", "不", "取消", "算了", "no", "cancel", "不要", "不用"]
+        content_lower = content.lower().strip()
+        return any(keyword in content_lower for keyword in cancel_keywords)
+
+    def _submit_work_order(self, userid, work_order_data):
+        """提交工单到AI workflow接口
 
         Args:
             userid: 用户ID
@@ -144,29 +182,12 @@ class MessageProcessor:
         Returns:
             tuple: (success, result_message)
         """
-        # TODO: 调用另一个AI接口提交工单
-        # 示例代码（待接口开发后替换）:
-        #
-        # submit_url = "http://xxx.xxx.xxx/api/submit_work_order"
-        # headers = {"Content-Type": "application/json"}
-        # payload = {
-        #     "user_id": userid,
-        #     "work_order": work_order_data
-        # }
-        #
-        # try:
-        #     resp = requests.post(submit_url, headers=headers, json=payload, timeout=30)
-        #     resp.raise_for_status()
-        #     result = resp.json()
-        #     return True, "工单提交成功"
-        # except Exception as e:
-        #     logger.error(f"工单提交失败: {e}")
-        #     return False, "工单提交失败，请稍后重试"
+        logger.info(f"提交工单: userid={userid}, 数据: {json.dumps(work_order_data, ensure_ascii=False)}")
 
-        logger.info(f"[待开发] 工单提交接口调用，用户: {userid}, 数据: {json.dumps(work_order_data, ensure_ascii=False)}")
+        # 调用AI workflow接口
+        success, result = self.ai_client.submit_work_order(userid, work_order_data)
 
-        # 暂时返回成功，等接口开发后替换
-        return True, "工单已记录（提交接口待开发）"
+        return success, result
 
     def process(self, plain_xml):
         """处理消息入口"""
@@ -221,6 +242,32 @@ class MessageProcessor:
                 }
                 logger.info(f"收到图片关联消息，等待图片: {content}")
                 return
+
+            # 检查是否有待确认的工单
+            pending_order = self._get_pending_work_order(userid)
+            if pending_order:
+                if self._is_confirm_message(content):
+                    # 用户确认生成工单
+                    self._clear_pending_work_order(userid)
+                    self.wechat_api.send_app_message(userid, "⏳ 正在生成工单，请稍候...")
+
+                    success, result = self._submit_work_order(userid, pending_order)
+
+                    if success:
+                        # 清空会话上下文
+                        self.ai_client.clear_conversation(userid)
+                        logger.info(f"工单提交成功，已清空用户会话上下文: {userid}")
+                        self.wechat_api.send_app_message(userid, "工单已生成")
+                    else:
+                        self.wechat_api.send_app_message(userid, f"❌ 工单生成失败：{result}\n\n请稍后重试或联系管理员。")
+                    return
+
+                elif self._is_cancel_message(content):
+                    # 用户取消
+                    self._clear_pending_work_order(userid)
+                    self.wechat_api.send_app_message(userid, "已取消工单生成。如需帮助，请继续描述您的问题。")
+                    return
+                # 如果既不是确认也不是取消，继续正常处理消息（可能是用户要修改信息）
 
             # 1. 检查用户是否已授权（数据库中有手机号）
             is_authorized, user_info = self.user_manager.check_user_authorized(userid)
@@ -280,25 +327,19 @@ class MessageProcessor:
                     print("!" * 60 + "\n")
                     self.wechat_api.send_app_message(userid, missing_msg)
                 else:
-                    # 所有必填字段完整，显示确认信息
+                    # 所有必填字段完整，保存待确认工单并询问用户
+                    self._save_pending_work_order(userid, parsed_data)
+
                     confirm_msg = self._format_work_order_confirm(parsed_data)
                     print("\n" + "+" * 60)
-                    print(">>> 工单信息完整 <<<")
+                    print(">>> 工单信息完整，等待用户确认 <<<")
                     print("+" * 60)
                     print(confirm_msg)
                     print("+" * 60 + "\n")
 
-                    # 调用另一个AI接口提交工单
-                    success, submit_result = self._submit_work_order(userid, parsed_data)
-
-                    if success:
-                        # 发送确认消息（附带上传链接）
-                        upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
-                        reply_with_upload = f"{confirm_msg}\n{submit_result}\n<a href='{upload_url}'>上传附件</a>"
-                        self.wechat_api.send_app_message(userid, reply_with_upload)
-                    else:
-                        # 提交失败，提示用户
-                        self.wechat_api.send_app_message(userid, f"{confirm_msg}\n\n❌ {submit_result}")
+                    # 询问用户是否生成工单
+                    ask_msg = f"{confirm_msg}\n\n❓ 请确认以上信息是否正确，是否要生成工单？\n回复【是】或【确认】生成工单\n回复【否】或【取消】取消操作"
+                    self.wechat_api.send_app_message(userid, ask_msg)
             else:
                 # AI返回的不是JSON格式，直接发送原始回复
                 upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
@@ -496,25 +537,19 @@ class MessageProcessor:
                     print("!" * 60 + "\n")
                     self.wechat_api.send_app_message(userid, missing_msg)
                 else:
-                    # 所有必填字段完整，显示确认信息
+                    # 所有必填字段完整，保存待确认工单并询问用户
+                    self._save_pending_work_order(userid, parsed_data)
+
                     confirm_msg = self._format_work_order_confirm(parsed_data)
                     print("\n" + "+" * 60)
-                    print(">>> 工单信息完整 <<<")
+                    print(">>> 工单信息完整，等待用户确认 <<<")
                     print("+" * 60)
                     print(confirm_msg)
                     print("+" * 60 + "\n")
 
-                    # 调用另一个AI接口提交工单
-                    success, submit_result = self._submit_work_order(userid, parsed_data)
-
-                    if success:
-                        # 发送确认消息（附带上传链接）
-                        upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
-                        reply_with_upload = f"{confirm_msg}\n{submit_result}\n<a href='{upload_url}'>上传附件</a>"
-                        self.wechat_api.send_app_message(userid, reply_with_upload)
-                    else:
-                        # 提交失败，提示用户
-                        self.wechat_api.send_app_message(userid, f"{confirm_msg}\n\n❌ {submit_result}")
+                    # 询问用户是否生成工单
+                    ask_msg = f"{confirm_msg}\n\n❓ 请确认以上信息是否正确，是否要生成工单？\n回复【是】或【确认】生成工单\n回复【否】或【取消】取消操作"
+                    self.wechat_api.send_app_message(userid, ask_msg)
             else:
                 # AI返回的不是JSON格式，直接发送原始回复
                 upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
