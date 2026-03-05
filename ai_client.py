@@ -214,11 +214,12 @@ class AIClient:
         # 将工单数据转为JSON字符串
         text_content = json.dumps(work_order_data, ensure_ascii=False)
 
-        # workflow的输入格式 - query是用户回复，text是工单数据
+        # workflow的输入格式 - query是用户回复，text是工单数据，status写死600
         payload = {
             "inputs": {
                 "query": query,
-                "text": text_content
+                "text": text_content,
+                "status": "600"
             },
             "response_mode": "blocking",
             "user": user_id
