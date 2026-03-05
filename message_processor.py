@@ -230,6 +230,9 @@ class MessageProcessor:
                 logger.info(f"收到图片关联消息，等待图片: {content}")
                 return
 
+            # 保存之前的工单数据（用于intent=3时合并）
+            previous_order = None
+
             # 检查是否有待确认的工单
             pending_order = self._get_pending_work_order(userid)
             if pending_order:
@@ -279,11 +282,12 @@ class MessageProcessor:
                     return
 
                 else:
-                    # 3：想修改，保留会话上下文，清除pending_order，继续调用chat接口
+                    # 3：想修改，保留会话上下文，保存之前的工单数据用于合并
                     print("\n" + "*" * 60)
                     print(">>> 执行: 想修改，保留上下文继续对话 <<<")
                     print("*" * 60 + "\n")
 
+                    previous_order = pending_order.copy()  # 保存之前的工单数据用于后续合并
                     self._clear_pending_work_order(userid)
                     logger.info(f"用户想修改工单信息，保留上下文继续对话: {userid}")
                     # 不清除会话上下文，不return，让代码继续往下走调用chat接口
@@ -333,6 +337,26 @@ class MessageProcessor:
                 # AI返回了JSON格式的工单数据
                 logger.info(f"AI返回JSON数据: {json.dumps(parsed_data, ensure_ascii=False)}")
 
+                # 如果之前有pending_order（用户想修改），需要合并数据
+                # 相同的内容就覆盖
+                if previous_order:
+                    print("\n" + "~" * 60)
+                    print(">>> 合并工单数据（相同字段覆盖） <<<")
+                    print("~" * 60)
+                    print(f"之前数据: {json.dumps(previous_order, ensure_ascii=False)}")
+                    print(f"新返回数据: {json.dumps(parsed_data, ensure_ascii=False)}")
+
+                    # 用新数据覆盖旧数据中的相同字段
+                    for key, value in parsed_data.items():
+                        if value and (not isinstance(value, str) or value.strip()):
+                            # 只覆盖非空的值
+                            previous_order[key] = value
+                    parsed_data = previous_order
+
+                    print(f"合并后数据: {json.dumps(parsed_data, ensure_ascii=False)}")
+                    print("~" * 60 + "\n")
+                    logger.info(f"合并后的工单数据: {json.dumps(parsed_data, ensure_ascii=False)}")
+
                 # 验证必填字段
                 is_valid, missing_fields = self._validate_work_order(parsed_data)
 
@@ -344,6 +368,9 @@ class MessageProcessor:
                     print("!" * 60)
                     print(missing_msg)
                     print("!" * 60 + "\n")
+                    # 如果是修改流程且字段不完整，也需要保存已有数据
+                    if previous_order:
+                        self._save_pending_work_order(userid, parsed_data)
                     upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
                     self.wechat_api.send_app_message(userid, f"{missing_msg}<a href='{upload_url}'>上传附件</a>")
                 else:
