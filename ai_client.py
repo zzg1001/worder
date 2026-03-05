@@ -195,13 +195,12 @@ class AIClient:
             logger.error(f"图片AI调用异常: {e}")
             return "图片解析服务暂时不可用，请稍后重试"
 
-    def submit_work_order(self, user_id, work_order_data, query):
+    def submit_work_order(self, user_id, work_order_data):
         """调用工单提交workflow接口
 
         Args:
             user_id: 用户ID
             work_order_data: 工单数据字典
-            query: 用户回复内容，让大模型判断是否保存
 
         Returns:
             tuple: (success, result_message)
@@ -218,12 +217,10 @@ class AIClient:
         # 将工单数据转为JSON字符串
         text_content = json.dumps(work_order_data, ensure_ascii=False)
 
-        # workflow的输入格式 - query是用户回复，text是工单数据，status写死600
+        # workflow的输入格式 - 只有text参数
         payload = {
             "inputs": {
-                "query": query,
-                "text": text_content,
-                "status": "600"
+                "text": text_content
             },
             "response_mode": "blocking",
             "user": user_id

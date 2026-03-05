@@ -159,21 +159,20 @@ class MessageProcessor:
         if userid in self._pending_work_orders:
             del self._pending_work_orders[userid]
 
-    def _submit_work_order(self, userid, work_order_data, query):
+    def _submit_work_order(self, userid, work_order_data):
         """提交工单到AI workflow接口
 
         Args:
             userid: 用户ID
             work_order_data: 完整的工单数据字典
-            query: 用户回复内容
 
         Returns:
             tuple: (success, result_message)
         """
-        logger.info(f"提交工单: userid={userid}, query={query}, 数据: {json.dumps(work_order_data, ensure_ascii=False)}")
+        logger.info(f"提交工单: userid={userid}, 数据: {json.dumps(work_order_data, ensure_ascii=False)}")
 
-        # 调用AI workflow接口，让大模型判断是否保存
-        success, result = self.ai_client.submit_work_order(userid, work_order_data, query)
+        # 调用AI workflow接口
+        success, result = self.ai_client.submit_work_order(userid, work_order_data)
 
         return success, result
 
@@ -236,23 +235,43 @@ class MessageProcessor:
             if pending_order:
                 # 先调用意图判断接口
                 intent = self.ai_client.check_intent(userid, content)
+
+                # 明显打印意图判断结果
+                print("\n" + "=" * 60)
+                print(">>> 意图判断结果 <<<")
+                print("=" * 60)
+                intent_desc = {1: "同意生成工单", 2: "不同意", 3: "想修改"}
+                print(f"用户回复: {content}")
+                print(f"判断结果: {intent} - {intent_desc.get(intent, '未知')}")
+                print("=" * 60 + "\n")
+
                 logger.info(f"用户意图判断结果: {intent}, userid={userid}")
 
                 if intent == 1:
                     # 1：同意，调用创建工单接口，清空上下文
+                    print("\n" + "*" * 60)
+                    print(">>> 执行: 同意生成工单 <<<")
+                    print("*" * 60 + "\n")
+
                     self._clear_pending_work_order(userid)
-                    success, result = self._submit_work_order(userid, pending_order, content)
+                    success, result = self._submit_work_order(userid, pending_order)
 
                     if success:
                         self.ai_client.clear_conversation(userid)
+                        print(">>> 工单创建成功，已清空上下文 <<<")
                         logger.info(f"工单提交成功，已清空用户会话上下文: {userid}")
                         self.wechat_api.send_app_message(userid, "工单已生成")
                     else:
+                        print(f">>> 工单创建失败: {result} <<<")
                         logger.error(f"工单提交异常: {result}, userid={userid}")
                     return
 
                 elif intent == 2:
                     # 2：不同意，清空上下文，回复友好消息
+                    print("\n" + "*" * 60)
+                    print(">>> 执行: 不同意，清空上下文 <<<")
+                    print("*" * 60 + "\n")
+
                     self._clear_pending_work_order(userid)
                     self.ai_client.clear_conversation(userid)
                     logger.info(f"用户不同意生成工单，已清空上下文: {userid}")
@@ -261,6 +280,10 @@ class MessageProcessor:
 
                 else:
                     # 3：想修改，保留会话上下文，清除pending_order，继续调用chat接口
+                    print("\n" + "*" * 60)
+                    print(">>> 执行: 想修改，保留上下文继续对话 <<<")
+                    print("*" * 60 + "\n")
+
                     self._clear_pending_work_order(userid)
                     logger.info(f"用户想修改工单信息，保留上下文继续对话: {userid}")
                     # 不清除会话上下文，不return，让代码继续往下走调用chat接口
