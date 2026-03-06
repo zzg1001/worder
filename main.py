@@ -771,13 +771,13 @@ def ticket_status_monitor():
 
     while True:
         try:
-            # 查询已完成但未通知的工单，同时关联用户表获取 userid
+            # 查询已解决但未通知的工单，同时关联用户表获取 userid
             sql = """
             SELECT t.id, t.title, t.contact_name, t.contact_phone, t.problem_desc,
-                   t.update_time, u.userid
+                   t.resolved_at, t.updated_at, u.userid
             FROM tickets t
             LEFT JOIN wx_users u ON t.contact_phone = u.mobile
-            WHERE t.status = '完成' AND (t.notified IS NULL OR t.notified = 0)
+            WHERE t.status = '已解决' AND (t.notified IS NULL OR t.notified = 0)
             """
 
             with get_ticket_db() as conn:
@@ -793,11 +793,12 @@ def ticket_status_monitor():
                 title = ticket['title'] or '未命名工单'
                 contact_name = ticket['contact_name'] or '用户'
                 userid = ticket.get('userid')
-                update_time = ticket.get('update_time')
+                # 优先用 resolved_at，没有则用 updated_at
+                resolved_time = ticket.get('resolved_at') or ticket.get('updated_at')
 
                 # 格式化完成时间
-                if update_time:
-                    complete_time = update_time.strftime('%Y-%m-%d %H:%M')
+                if resolved_time:
+                    complete_time = resolved_time.strftime('%Y-%m-%d %H:%M')
                 else:
                     complete_time = datetime.now().strftime('%Y-%m-%d %H:%M')
 
