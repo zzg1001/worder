@@ -192,6 +192,32 @@ class MessageProcessor:
         if userid in self._pending_work_orders:
             del self._pending_work_orders[userid]
 
+    def _save_attachment(self, userid, file_content, filename, file_type):
+        """保存附件文件（不参与AI分析）
+
+        Args:
+            userid: 用户ID
+            file_content: 文件内容bytes
+            filename: 文件名
+            file_type: 文件类型（image/voice/video/file）
+        """
+        try:
+            os.makedirs(FILE_SAVE_DIR, exist_ok=True)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            name, ext = os.path.splitext(filename) if filename else ("attachment", "")
+            save_filename = f"{userid}_{timestamp}_{name}{ext}"
+            save_path = os.path.join(FILE_SAVE_DIR, save_filename)
+
+            with open(save_path, "wb") as f:
+                f.write(file_content)
+
+            logger.info(f"附件已保存: {save_path}")
+            return save_path
+        except Exception as e:
+            logger.error(f"保存附件失败: {e}")
+            return None
+
     def _submit_work_order(self, userid, work_order_data):
         """提交工单到AI workflow接口
 
@@ -481,7 +507,15 @@ class MessageProcessor:
             if original_filename:
                 filename = original_filename
 
-            # 图片类型：发送给AI处理
+            # 如果有待确认工单，附件只保存不参与AI分析，不影响主流程
+            pending_order = self._get_pending_work_order(userid)
+            if pending_order:
+                # 保存附件
+                self._save_attachment(userid, file_content, filename, msg_type)
+                self.wechat_api.send_app_message(userid, f"附件已收到，请确认是否生成工单")
+                return
+
+            # 图片类型：发送给AI处理（仅在无pending_order时）
             if msg_type == "image":
                 # 处理图片文件名，避免乱码
                 filename = self._get_image_filename(filename)
