@@ -50,3 +50,7 @@ DB_CONFIG = {
 # ========== 日志配置 ==========
 LOG_LEVEL = "INFO"
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+
+# ========== 工单监控配置 ==========
+TICKET_MONITOR_ENABLED = True  # 是否启用工单状态监控
+TICKET_MONITOR_INTERVAL = 10   # 轮询间隔（秒）

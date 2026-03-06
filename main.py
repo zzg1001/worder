@@ -20,7 +20,8 @@ from config import (
     WORK_ORDER_API_URL, WORK_ORDER_API_KEY,
     INTENT_API_URL, INTENT_API_KEY,
     OAUTH_SIGN_KEY, OAUTH_REDIRECT_URI,
-    MAIN_PORT, OAUTH_PORT, DB_CONFIG
+    MAIN_PORT, OAUTH_PORT, DB_CONFIG,
+    TICKET_MONITOR_ENABLED, TICKET_MONITOR_INTERVAL
 )
 
 from wechat_crypto import WXBizMsgCrypt
@@ -764,8 +765,6 @@ def run_oauth():
 # ========== 工单状态监控（轮询） ==========
 import time
 
-TICKET_MONITOR_INTERVAL = 10  # 轮询间隔（秒）
-
 def ticket_status_monitor():
     """监控工单状态变化，完成时通知用户"""
     logger.info(f"工单状态监控启动，轮询间隔: {TICKET_MONITOR_INTERVAL}秒")
@@ -853,17 +852,22 @@ if __name__ == "__main__":
     print(f"📍 消息服务: http://0.0.0.0:{MAIN_PORT}/yjcallback")
     print(f"📍 OAuth服务: http://0.0.0.0:{OAUTH_PORT}/oauth_callback")
     print(f"📍 工单接口: http://0.0.0.0:{OAUTH_PORT}/insert_ticket")
-    print(f"📍 工单监控: 每{TICKET_MONITOR_INTERVAL}秒轮询")
+    if TICKET_MONITOR_ENABLED:
+        print(f"📍 工单监控: 每{TICKET_MONITOR_INTERVAL}秒轮询")
+    else:
+        print(f"📍 工单监控: 已关闭")
     print(f"📍 对外授权: {OAUTH_REDIRECT_URI}")
     print("=" * 60)
 
     t1 = threading.Thread(target=run_main, daemon=True)
     t2 = threading.Thread(target=run_oauth, daemon=True)
-    t3 = threading.Thread(target=ticket_status_monitor, daemon=True)
 
     t1.start()
     t2.start()
-    t3.start()
+
+    if TICKET_MONITOR_ENABLED:
+        t3 = threading.Thread(target=ticket_status_monitor, daemon=True)
+        t3.start()
 
     try:
         while True:
