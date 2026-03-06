@@ -776,7 +776,7 @@ def ticket_status_monitor():
             SELECT t.id, t.title, t.contact_name, t.contact_phone, t.problem_desc,
                    t.resolved_at, t.updated_at, u.userid
             FROM tickets t
-            LEFT JOIN wx_users u ON t.contact_phone = u.mobile
+            LEFT JOIN wx_users u ON t.contact_phone = u.mobile COLLATE utf8mb4_unicode_ci
             WHERE t.status = '已解决' AND (t.notified IS NULL OR t.notified = 0)
             """
 
