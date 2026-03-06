@@ -288,10 +288,8 @@ def upload_page():
                             console.log('agentConfig success');
                             wxReady = true;
                             document.getElementById('status').style.display = 'none';
-                            // 自动打开文件选择
-                            setTimeout(function() {{
-                                chooseChatFile();
-                            }}, 300);
+                            // 显示按钮让用户自己选择
+                            document.getElementById('btnGroup').style.display = 'flex';
                         }},
                         fail: function(res) {{
                             console.error('agentConfig fail:', res);
