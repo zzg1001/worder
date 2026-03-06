@@ -8,6 +8,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import json
 import logging
 import threading
 from datetime import datetime
@@ -562,9 +563,192 @@ def upload_file():
         logger.error(f"文件上传失败: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+# ========== 工单服务（整合 httpServer.py） ==========
+import pymysql
+from contextlib import contextmanager
+
+# 工单数据库配置
+TICKET_DB_CONFIG = {
+    'host': '8.153.198.194',
+    'port': 63306,
+    'user': 'wx_qa',
+    'password': 'cKXF45BLSHW68ynk',
+    'database': 'wx_qa',
+    'charset': 'utf8mb4'
+}
+
+@contextmanager
+def get_ticket_db():
+    conn = pymysql.connect(**TICKET_DB_CONFIG)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+def parse_ticket_data(data):
+    """兼容多种输入格式"""
+    ticket_data = None
+
+    if isinstance(data, dict) and 'ticket_json' in data:
+        try:
+            ticket_data = json.loads(data['ticket_json'])
+        except:
+            pass
+
+    if ticket_data is None and isinstance(data, dict) and 'text' in data:
+        try:
+            ticket_data = json.loads(data['text'])
+        except:
+            pass
+
+    if ticket_data is None and isinstance(data, dict) and 'title' in data:
+        ticket_data = data
+
+    if ticket_data is None:
+        try:
+            if isinstance(data, str):
+                ticket_data = json.loads(data)
+        except:
+            pass
+
+    return ticket_data
+
+@oauth_app.route('/insert_ticket', methods=['POST'])
+def insert_ticket():
+    """工单创建接口"""
+    try:
+        data = request.get_json()
+
+        print(f"\n[工单接口] 收到请求: {json.dumps(data, ensure_ascii=False)[:500]}")
+
+        if not data:
+            raw_body = request.get_data(as_text=True)
+            try:
+                data = json.loads(raw_body)
+            except:
+                return jsonify({"success": False, "message": "无法解析请求体"}), 400
+
+        ticket_data = parse_ticket_data(data)
+
+        if ticket_data is None:
+            return jsonify({
+                "success": False,
+                "message": "无法解析 ticket 数据",
+                "received": data
+            }), 400
+
+        print(f"[工单接口] 解析后数据: {json.dumps(ticket_data, ensure_ascii=False)[:500]}")
+
+        required_fields = ['title', 'category', 'priority', 'contact_name']
+        missing = [f for f in required_fields if not ticket_data.get(f)]
+        if missing:
+            return jsonify({
+                "success": False,
+                "message": f"缺少必填字段: {', '.join(missing)}"
+            }), 400
+
+        sql = """INSERT INTO tickets
+        (title, category, priority, contact_name, department, contact_phone,
+         problem_desc, impact_scope, tried_solutions, status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, '待处理')"""
+
+        params = (
+            ticket_data.get('title'),
+            ticket_data.get('category'),
+            ticket_data.get('priority'),
+            ticket_data.get('contact_name'),
+            ticket_data.get('department') or None,
+            ticket_data.get('contact_phone') or None,
+            ticket_data.get('problem_desc'),
+            ticket_data.get('impact_scope'),
+            ticket_data.get('tried_solutions')
+        )
+
+        with get_ticket_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                ticket_id = cursor.lastrowid
+                conn.commit()
+
+        print(f"[工单接口] 创建成功: ID={ticket_id}")
+        return jsonify({
+            "success": True,
+            "ticket_id": ticket_id,
+            "message": f"工单创建成功，ID: {ticket_id}"
+        })
+
+    except Exception as e:
+        import traceback
+        print(f"[工单接口] 错误: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({"success": False, "message": f"服务器错误: {str(e)}"}), 500
+
+@oauth_app.route('/insert_ticket_raw', methods=['POST'])
+def insert_ticket_raw():
+    """备用接口：直接接收原始 JSON 字符串"""
+    try:
+        raw_body = request.get_data(as_text=True)
+
+        try:
+            ticket_data = json.loads(raw_body)
+        except json.JSONDecodeError as e:
+            return jsonify({"success": False, "message": f"JSON解析失败: {str(e)}"}), 400
+
+        required_fields = ['title', 'category', 'priority', 'contact_name']
+        missing = [f for f in required_fields if not ticket_data.get(f)]
+        if missing:
+            return jsonify({"success": False, "message": f"缺少必填字段: {', '.join(missing)}"}), 400
+
+        sql = """INSERT INTO tickets
+        (title, category, priority, contact_name, department, contact_phone,
+         problem_desc, impact_scope, tried_solutions, status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, '待处理')"""
+
+        params = (
+            ticket_data.get('title'),
+            ticket_data.get('category'),
+            ticket_data.get('priority'),
+            ticket_data.get('contact_name'),
+            ticket_data.get('department') or None,
+            ticket_data.get('contact_phone') or None,
+            ticket_data.get('problem_desc'),
+            ticket_data.get('impact_scope'),
+            ticket_data.get('tried_solutions')
+        )
+
+        with get_ticket_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, params)
+                ticket_id = cursor.lastrowid
+                conn.commit()
+
+        return jsonify({
+            "success": True,
+            "ticket_id": ticket_id,
+            "message": f"工单创建成功，ID: {ticket_id}"
+        })
+
+    except Exception as e:
+        return jsonify({"success": False, "message": f"服务器错误: {str(e)}"}), 500
+
 @oauth_app.route("/health", methods=["GET"])
 def oauth_health():
-    return {"service": "oauth", "port": OAUTH_PORT, "status": "running"}, 200
+    """健康检查（包含数据库连接）"""
+    db_status = "unknown"
+    try:
+        with get_ticket_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+
+    return {
+        "service": "oauth+ticket",
+        "port": OAUTH_PORT,
+        "status": "running",
+        "database": db_status
+    }, 200
 
 
 def run_main():
@@ -583,6 +767,7 @@ if __name__ == "__main__":
     print("=" * 60)
     print(f"📍 消息服务: http://0.0.0.0:{MAIN_PORT}/yjcallback")
     print(f"📍 OAuth服务: http://0.0.0.0:{OAUTH_PORT}/oauth_callback")
+    print(f"📍 工单接口: http://0.0.0.0:{OAUTH_PORT}/insert_ticket")
     print(f"📍 对外授权: {OAUTH_REDIRECT_URI}")
     print("=" * 60)
 
