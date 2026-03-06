@@ -438,6 +438,48 @@ class WeChatAPI:
             "agentSignature": agent_signature
         }
 
+    def send_markdown_message(self, touser, content):
+        """发送Markdown消息
+
+        支持的格式：
+        - 标题：# 标题
+        - 加粗：**粗体**
+        - 链接：[文字](url)
+        - 颜色：<font color="info">绿色</font>
+                <font color="comment">灰色</font>
+                <font color="warning">橙色</font>
+        """
+        access_token = self.get_access_token()
+        if not access_token:
+            return None
+
+        url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={access_token}"
+
+        data = {
+            "touser": touser,
+            "msgtype": "markdown",
+            "agentid": self.agent_id,
+            "markdown": {
+                "content": content
+            }
+        }
+
+        try:
+            resp = requests.post(url, json=data, timeout=10)
+            result = resp.json()
+            logger.info(f"发送Markdown消息结果: {result}")
+            if result.get("errcode") == 0:
+                return result.get("msgid")
+            return None
+        except Exception as e:
+            logger.error(f"发送Markdown消息异常: {e}")
+            return None
+
+    def send_new_conversation_hint(self, touser):
+        """发送"新对话"提示（灰色小字）"""
+        content = '<font color="comment">━━━━ 新对话 ━━━━</font>'
+        return self.send_markdown_message(touser, content)
+
     def download_media(self, media_id):
         """下载媒体文件（图片、语音、视频、文件）
 
