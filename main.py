@@ -761,6 +761,91 @@ def run_oauth():
     oauth_app.run(host="0.0.0.0", port=OAUTH_PORT, threaded=True)
 
 
+# ========== 工单状态监控（轮询） ==========
+import time
+
+TICKET_MONITOR_INTERVAL = 10  # 轮询间隔（秒）
+
+def ticket_status_monitor():
+    """监控工单状态变化，完成时通知用户"""
+    logger.info(f"工单状态监控启动，轮询间隔: {TICKET_MONITOR_INTERVAL}秒")
+
+    while True:
+        try:
+            # 查询已完成但未通知的工单，同时关联用户表获取 userid
+            sql = """
+            SELECT t.id, t.title, t.contact_name, t.contact_phone, t.problem_desc,
+                   t.update_time, u.userid
+            FROM tickets t
+            LEFT JOIN wx_users u ON t.contact_phone = u.mobile
+            WHERE t.status = '完成' AND (t.notified IS NULL OR t.notified = 0)
+            """
+
+            with get_ticket_db() as conn:
+                with conn.cursor(pymysql.cursors.DictCursor) as cursor:
+                    cursor.execute(sql)
+                    completed_tickets = cursor.fetchall()
+
+            if completed_tickets:
+                print(f"\n[工单监控] 发现 {len(completed_tickets)} 个已完成待通知的工单")
+
+            for ticket in completed_tickets:
+                ticket_id = ticket['id']
+                title = ticket['title'] or '未命名工单'
+                contact_name = ticket['contact_name'] or '用户'
+                userid = ticket.get('userid')
+                update_time = ticket.get('update_time')
+
+                # 格式化完成时间
+                if update_time:
+                    complete_time = update_time.strftime('%Y-%m-%d %H:%M')
+                else:
+                    complete_time = datetime.now().strftime('%Y-%m-%d %H:%M')
+
+                if not userid:
+                    print(f"[工单监控] 工单 {ticket_id} 无法找到对应用户，跳过通知")
+                    # 仍然标记为已通知，避免重复查询
+                    mark_ticket_notified(ticket_id)
+                    continue
+
+                # 构建通知消息（紧凑格式，无图标）
+                message = f"""{contact_name}，您好！
+您的工单「{title}」已处理完成。
+完成时间：{complete_time}
+如有问题请随时联系我们。"""
+
+                # 发送消息
+                try:
+                    wechat_api.send_app_message(userid, message)
+                    print(f"[工单监控] 已通知用户 {userid}，工单ID: {ticket_id}")
+                    logger.info(f"工单完成通知已发送: ticket_id={ticket_id}, userid={userid}")
+                except Exception as e:
+                    print(f"[工单监控] 发送通知失败: {e}")
+                    logger.error(f"工单完成通知发送失败: ticket_id={ticket_id}, error={e}")
+
+                # 标记为已通知
+                mark_ticket_notified(ticket_id)
+
+        except Exception as e:
+            logger.error(f"工单状态监控异常: {e}")
+            print(f"[工单监控] 异常: {e}")
+
+        # 等待下一次轮询
+        time.sleep(TICKET_MONITOR_INTERVAL)
+
+
+def mark_ticket_notified(ticket_id):
+    """标记工单已通知"""
+    try:
+        sql = "UPDATE tickets SET notified = 1 WHERE id = %s"
+        with get_ticket_db() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, (ticket_id,))
+                conn.commit()
+    except Exception as e:
+        logger.error(f"标记工单已通知失败: ticket_id={ticket_id}, error={e}")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("🚀 企业微信AI助手（优化版）")
@@ -768,14 +853,17 @@ if __name__ == "__main__":
     print(f"📍 消息服务: http://0.0.0.0:{MAIN_PORT}/yjcallback")
     print(f"📍 OAuth服务: http://0.0.0.0:{OAUTH_PORT}/oauth_callback")
     print(f"📍 工单接口: http://0.0.0.0:{OAUTH_PORT}/insert_ticket")
+    print(f"📍 工单监控: 每{TICKET_MONITOR_INTERVAL}秒轮询")
     print(f"📍 对外授权: {OAUTH_REDIRECT_URI}")
     print("=" * 60)
 
     t1 = threading.Thread(target=run_main, daemon=True)
     t2 = threading.Thread(target=run_oauth, daemon=True)
+    t3 = threading.Thread(target=ticket_status_monitor, daemon=True)
 
     t1.start()
     t2.start()
+    t3.start()
 
     try:
         while True:
