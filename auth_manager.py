@@ -26,7 +26,7 @@ class AuthManager:
 
     def generate_auth_url(self, userid):
         """生成OAuth授权链接"""
-        if not re.match(r'^[a-zA-Z0-9_]+$', userid):
+        if not re.match(r'^[\w\-\.@]+$', userid):
             logger.error(f"用户ID格式错误: {userid}")
             return None
 
