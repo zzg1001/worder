@@ -12,11 +12,12 @@ logger = logging.getLogger(__name__)
 class OAuthProcessor:
     """OAuth处理器"""
 
-    def __init__(self, wechat_api, auth_manager, user_manager, ai_client=None):
+    def __init__(self, wechat_api, auth_manager, user_manager, ai_client=None, message_processor=None):
         self.wechat_api = wechat_api
         self.auth_manager = auth_manager
         self.user_manager = user_manager
         self.ai_client = ai_client
+        self.message_processor = message_processor
 
     def handle(self, code, state):
         """处理OAuth回调 - 同步验证身份，异步处理AI请求"""
@@ -106,10 +107,30 @@ class OAuthProcessor:
             print(ai_reply)
             print("#" * 60 + "\n")
 
-            # 发送AI回复给用户（附带上传链接，带用户ID）
+            # 解析AI返回的JSON数据（使用message_processor的方法）
             upload_url = f"https://yjservicetest.ike-data.com/upload?userid={userid}"
-            reply_with_upload = f"{ai_reply} <a href='{upload_url}'>上传附件</a>"
-            self.wechat_api.send_app_message(userid, reply_with_upload)
+
+            if self.message_processor:
+                is_json, parsed_data = self.message_processor._parse_ai_response(ai_reply)
+
+                if is_json:
+                    # AI返回了JSON格式的工单数据，保存并格式化展示
+                    self.message_processor._save_pending_work_order(userid, parsed_data)
+                    # 清除AI会话上下文（但保留工单数据）
+                    self.ai_client.clear_conversation(userid)
+
+                    confirm_msg = self.message_processor._format_work_order_confirm(parsed_data)
+                    ask_msg = f"{confirm_msg}\n是否生成工单？<a href='{upload_url}'>上传附件</a>"
+                    self.wechat_api.send_app_message(userid, ask_msg)
+                else:
+                    # AI返回的不是JSON格式，直接发送原始回复
+                    reply_with_upload = f"{ai_reply}<a href='{upload_url}'>上传附件</a>"
+                    self.wechat_api.send_app_message(userid, reply_with_upload)
+            else:
+                # 没有message_processor时的降级处理
+                reply_with_upload = f"{ai_reply}<a href='{upload_url}'>上传附件</a>"
+                self.wechat_api.send_app_message(userid, reply_with_upload)
+
             logger.info(f"授权后自动处理消息成功: userid={userid}")
 
         except Exception as e:
